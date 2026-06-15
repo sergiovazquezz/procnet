@@ -1,0 +1,17 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+TabWidth: 4
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: All
+Cpp11BracedListStyle: false
+SpaceBeforeCpp11BracedList: false
+AccessModifierOffset: -4
+NamespaceIndentation: All
+PointerAlignment: Left
+DerivePointerAlignment: false
+ReferenceAlignment: Pointer
+BreakTemplateDeclarations: Yes
+AlwaysBreakAfterReturnType: None
+BreakAfterReturnType: None
+BreakAfterAttributes: Always

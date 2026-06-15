@@ -1,0 +1,22 @@
+[package]
+name = "procnet"
+version = "0.1.0"
+edition = "2024"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+debug = false
+strip = true
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = false
+
+[dependencies]
+anyhow = "1.0.102"
+libbpf-rs = "0.26.0"
+
+[build-dependencies]
+libbpf-cargo = "0.26.0"

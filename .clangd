@@ -1,0 +1,5 @@
+CompileFlags:
+  Add:
+    - -target
+    - bpf
+    - -D__TARGET_ARCH_x86

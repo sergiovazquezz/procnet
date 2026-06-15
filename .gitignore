@@ -1,0 +1,11 @@
+# Rust
+/target
+
+# libbpf
+*.skel.rs
+
+.direnv/
+
+# Profiling
+flamegraph.svg
+perf.*
