@@ -1,9 +1,13 @@
-use std::{collections::HashMap, fs, rc::Rc};
+use std::{fs, rc::Rc};
 
-use anyhow::{Context, Result};
 use libbpf_rs::{MapCore, MapFlags, MapMut};
 
-use crate::{events::ProcEvent, procnet::types::proc_stats, stats};
+use crate::{events::ProcEvent, procnet::types::proc_stats};
+
+struct ProcInfo {
+    pub pid: u32,
+    pub name: Rc<str>,
+}
 
 #[derive(Clone)]
 pub struct StatsRow {
@@ -27,14 +31,14 @@ impl StatsRow {
 }
 
 pub struct StatsCollector {
-    procs: HashMap<u32, Rc<str>>,
+    procs: Vec<ProcInfo>,
     rows: Vec<StatsRow>,
 }
 
 impl StatsCollector {
     pub fn new() -> Self {
         Self {
-            procs: HashMap::with_capacity(20),
+            procs: Vec::with_capacity(20),
             rows: Vec::with_capacity(20),
         }
     }
@@ -42,17 +46,18 @@ impl StatsCollector {
     pub fn apply_event(&mut self, event: ProcEvent) {
         let name = get_proc_name(event.pid).unwrap_or_else(|| comm_to_string(&event.comm));
 
-        // TODO: Use the return value to know that the pid has been reused by a different process,
-        // in consequence needing to reset the stats corresponding to the pid
-        self.procs.insert(event.pid, Rc::<str>::from(name));
+        self.procs.push(ProcInfo {
+            pid: event.pid,
+            name: Rc::<str>::from(name),
+        });
     }
 
     pub fn collect_rows(&mut self, stats_map: &MapMut) -> &[StatsRow] {
         self.rows.clear();
 
-        for (pid, name) in self.procs.iter() {
-            if let Some(stats) = merge_values_for_pid(stats_map, *pid) {
-                let row = StatsRow::new(*pid, stats, Rc::clone(name));
+        for proc in &self.procs {
+            if let Some(stats) = merge_values_for_pid(stats_map, proc.pid) {
+                let row = StatsRow::new(proc.pid, stats, Rc::clone(&proc.name));
                 self.rows.push(row);
             }
         }
