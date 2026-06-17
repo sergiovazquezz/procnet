@@ -1,21 +1,24 @@
-use std::{fs, rc::Rc};
+use std::rc::Rc;
 
 use libbpf_rs::{MapCore, MapFlags, MapMut};
 
 use crate::{events::ProcEvent, procnet::types::ProcStats};
 
+#[derive(Debug)]
 struct ProcInfo {
-    pub pid: u32,
-    pub name: Rc<str>,
+    pid: u32,
+    name: Rc<str>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StatsRow {
     pub pid: u32,
     pub name: Rc<str>,
     pub sent_bytes: u64,
     pub recv_bytes: u64,
     pub total_bytes: u64,
+    last_sent_cum: u64,
+    last_recv_cum: u64,
 }
 
 impl StatsRow {
@@ -26,6 +29,8 @@ impl StatsRow {
             sent_bytes: stats.sent_bytes,
             recv_bytes: stats.recv_bytes,
             total_bytes: stats.sent_bytes.saturating_add(stats.recv_bytes),
+            last_sent_cum: stats.sent_bytes,
+            last_recv_cum: stats.recv_bytes,
         }
     }
 }
@@ -33,6 +38,7 @@ impl StatsRow {
 pub struct StatsCollector {
     procs: Vec<ProcInfo>,
     rows: Vec<StatsRow>,
+    seen_pids: Vec<u32>,
 }
 
 impl StatsCollector {
@@ -40,27 +46,62 @@ impl StatsCollector {
         Self {
             procs: Vec::with_capacity(20),
             rows: Vec::with_capacity(20),
+            seen_pids: Vec::default(),
         }
     }
 
     pub fn apply_event(&mut self, event: ProcEvent) {
-        let name = get_proc_name(event.pid).unwrap_or_else(|| comm_to_string(&event.comm));
-
-        self.procs.push(ProcInfo {
-            pid: event.pid,
-            name: Rc::<str>::from(name),
-        });
-    }
-
-    pub fn collect_rows(&mut self, stats_map: &MapMut) -> &[StatsRow] {
-        self.rows.clear();
-
-        for proc in &self.procs {
-            if let Some(stats) = merge_values_for_pid(stats_map, proc.pid) {
-                let row = StatsRow::new(proc.pid, stats, Rc::clone(&proc.name));
-                self.rows.push(row);
+        match event {
+            ProcEvent::Start { pid, name } => {
+                self.procs.push(ProcInfo {
+                    pid,
+                    name: Rc::<str>::from(name),
+                });
+            }
+            ProcEvent::Exit(pid) => {
+                if let Some(idx) = self.procs.iter().position(|x| x.pid == pid) {
+                    self.procs.swap_remove(idx);
+                }
             }
         }
+    }
+
+    #[inline(never)]
+    pub fn collect_rows(&mut self, stats_map: &MapMut) -> &[StatsRow] {
+        self.seen_pids.clear();
+
+        for proc_info in &self.procs {
+            // TODO: Add an else to remove killed processes who's event might not have been processed
+            if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
+                match self.rows.iter_mut().find(|x| x.pid == proc_info.pid) {
+                    Some(old_stats) => {
+                        let sent_delta =
+                            new_stats.sent_bytes.saturating_sub(old_stats.last_sent_cum);
+
+                        let recv_delta =
+                            new_stats.recv_bytes.saturating_sub(old_stats.last_recv_cum);
+
+                        old_stats.sent_bytes = sent_delta;
+                        old_stats.recv_bytes = recv_delta;
+                        old_stats.total_bytes = sent_delta + recv_delta;
+
+                        old_stats.last_sent_cum = new_stats.sent_bytes;
+                        old_stats.last_recv_cum = new_stats.recv_bytes;
+                    }
+                    None => {
+                        self.rows.push(StatsRow::new(
+                            proc_info.pid,
+                            new_stats,
+                            Rc::clone(&proc_info.name),
+                        ));
+                    }
+                }
+
+                self.seen_pids.push(proc_info.pid);
+            }
+        }
+
+        self.rows.retain(|x| self.seen_pids.contains(&x.pid));
 
         self.rows.sort_by(|a, b| {
             b.total_bytes
@@ -83,6 +124,9 @@ pub fn merge_values_for_pid(stats_map: &MapMut, pid: u32) -> Option<ProcStats> {
         if let Some(value) = proc_stats_from_bytes(&value) {
             merged.recv_bytes += value.recv_bytes;
             merged.sent_bytes += value.sent_bytes;
+            if merged.comm == [0u8; 16] && value.comm != [0u8; 16] {
+                merged.comm = value.comm;
+            }
         }
     }
 
@@ -97,29 +141,4 @@ fn proc_stats_from_bytes(data: &[u8]) -> Option<ProcStats> {
     let stats = unsafe { data.as_ptr().cast::<ProcStats>().read_unaligned() };
 
     Some(stats)
-}
-
-fn get_proc_name(pid: u32) -> Option<String> {
-    let exe_path = format!("/proc/{pid}/exe");
-    if let Ok(target) = fs::read_link(exe_path)
-        && let Some(name) = target.file_name().and_then(|name| name.to_str())
-        && !name.is_empty()
-    {
-        return Some(name.to_owned());
-    }
-
-    let comm_path = format!("/proc/{pid}/comm");
-    if let Ok(comm) = fs::read_to_string(comm_path) {
-        let trimmed = comm.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_owned());
-        }
-    }
-
-    None
-}
-
-fn comm_to_string(comm: &[u8; 16]) -> String {
-    let end = comm.iter().position(|b| *b == 0).unwrap_or(comm.len());
-    String::from_utf8_lossy(&comm[..end]).into_owned()
 }

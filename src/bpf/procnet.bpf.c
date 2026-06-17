@@ -5,7 +5,13 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
+enum EventType {
+    EVENT_START = 1,
+    EVENT_EXIT,
+};
+
 struct ProcEvent {
+    enum EventType event_type;
     __u32 tgid;
     __u8 comm[16];
 };
@@ -35,8 +41,24 @@ static __always_inline int emit_start_event(__u32 tgid, __u8 comm[16])
     if (!event)
         return 0;
 
+    event->event_type = EVENT_START;
     event->tgid = tgid;
     __builtin_memcpy(event->comm, comm, sizeof(event->comm));
+
+    bpf_ringbuf_submit(event, 0);
+    return 0;
+}
+
+static __always_inline int emit_exit_event(__u32 tgid)
+{
+    struct ProcEvent* event = bpf_ringbuf_reserve(&EVENTS, sizeof(*event), 0);
+
+    if (!event)
+        return 0;
+
+    event->event_type = EVENT_EXIT;
+    event->tgid = tgid;
+    __builtin_memset(event->comm, 0, sizeof(event->comm));
 
     bpf_ringbuf_submit(event, 0);
     return 0;
@@ -79,7 +101,7 @@ static __always_inline int account_bytes(__u64 sent, __u64 recv)
 }
 
 SEC("kprobe/tcp_sendmsg")
-int procflow_tcp_sendmsg(struct pt_regs* ctx)
+int procnet_tcp_sendmsg(struct pt_regs* ctx)
 {
     __u64 size = (__u64)PT_REGS_PARM3(ctx);
 
@@ -87,7 +109,7 @@ int procflow_tcp_sendmsg(struct pt_regs* ctx)
 }
 
 SEC("kprobe/tcp_cleanup_rbuf")
-int procflow_tcp_cleanup_rbuf(struct pt_regs* ctx)
+int procnet_tcp_cleanup_rbuf(struct pt_regs* ctx)
 {
     int size = PT_REGS_PARM2(ctx);
 
@@ -95,6 +117,24 @@ int procflow_tcp_cleanup_rbuf(struct pt_regs* ctx)
         return 0;
 
     return account_bytes(0, (__u64)size);
+}
+
+SEC("tracepoint/sched/sched_process_exit")
+int procnet_sched_process_exit(void* ctx)
+{
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u32 pid = (__u32)pid_tgid;
+    __u32 tgid = (__u32)(pid_tgid >> 32);
+
+    // NOTE: sched_process_exit fires for threads too. Only delete when the
+    // thread-group leader exits.
+    if (pid != tgid)
+        return 0;
+
+    if (bpf_map_delete_elem(&STATS, &tgid) == 0)
+        emit_exit_event(tgid);
+
+    return 0;
 }
 
 char LICENSE[] SEC("license") = "GPL";

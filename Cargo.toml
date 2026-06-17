@@ -16,6 +16,7 @@ strip = false
 
 [dependencies]
 anyhow = "1.0.102"
+fxhash = "0.2.1"
 log = "0.4"
 log4rs = "1.4.0"
 libc = "0.2.183"
