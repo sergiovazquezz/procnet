@@ -16,7 +16,9 @@ strip = false
 
 [dependencies]
 anyhow = "1.0.102"
+libc = "0.2.183"
 libbpf-rs = "0.26.0"
+ratatui = "0.30.0"
 
 [build-dependencies]
 libbpf-cargo = "0.26.0"

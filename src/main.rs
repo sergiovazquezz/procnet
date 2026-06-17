@@ -1,10 +1,7 @@
 use std::mem::MaybeUninit;
-use std::thread;
-use std::time::Duration;
 
+use anyhow::{Context, Result};
 use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
-
-use anyhow::Result;
 
 mod procnet {
     include!(concat!(
@@ -15,7 +12,14 @@ mod procnet {
 
 use procnet::ProcnetSkelBuilder;
 
+mod app;
+mod events;
+mod stats;
+mod tui;
+
 fn main() -> Result<()> {
+    bump_memlock_rlimit()?;
+
     let skel_builder = ProcnetSkelBuilder::default();
 
     let mut open_object = MaybeUninit::uninit();
@@ -24,9 +28,23 @@ fn main() -> Result<()> {
     let mut skel = open_skel.load()?;
     skel.attach()?;
 
-    println!("procnet eBPF program loaded. Press Ctrl-C to exit.");
+    let stats_map = &skel.maps.STATS;
+    let events_map = &skel.maps.EVENTS;
 
-    loop {
-        thread::sleep(Duration::from_secs(1));
+    app::run(stats_map, events_map)
+}
+
+fn bump_memlock_rlimit() -> Result<()> {
+    let limit = 128 * 1024 * 1024;
+    let rlimit = libc::rlimit {
+        rlim_cur: limit,
+        rlim_max: limit,
+    };
+
+    let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlimit) };
+    if ret != 0 {
+        return Err(std::io::Error::last_os_error()).context("failed to increase RLIMIT_MEMLOCK");
     }
+
+    Ok(())
 }
