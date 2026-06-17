@@ -14,7 +14,7 @@ stats: build-profile
 	sudo perf stat -d ./target/profiling/procnet
 
 record: build-profile
-	sudo perf stat -d ./target/profiling/procnet
+	sudo perf record -g ./target/profiling/procnet
 
 flamegraph: build-profile
 	sudo flamegraph -- ./target/profiling/procnet
