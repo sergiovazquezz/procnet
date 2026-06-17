@@ -9,3 +9,4 @@
 # Profiling
 flamegraph.svg
 perf.*
+/logs

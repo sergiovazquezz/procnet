@@ -5,12 +5,12 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
-struct proc_event {
+struct ProcEvent {
     __u32 tgid;
     __u8 comm[16];
 };
 
-struct proc_stats {
+struct ProcStats {
     __u64 sent_bytes;
     __u64 recv_bytes;
     __u8 comm[16];
@@ -19,7 +19,7 @@ struct proc_stats {
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_HASH);
     __type(key, __u32);
-    __type(value, struct proc_stats);
+    __type(value, struct ProcStats);
     __uint(max_entries, 512);
 } STATS SEC(".maps");
 
@@ -30,7 +30,7 @@ struct {
 
 static __always_inline int emit_start_event(__u32 tgid, __u8 comm[16])
 {
-    struct proc_event* event = bpf_ringbuf_reserve(&EVENTS, sizeof(*event), 0);
+    struct ProcEvent* event = bpf_ringbuf_reserve(&EVENTS, sizeof(*event), 0);
 
     if (!event)
         return 0;
@@ -46,7 +46,7 @@ static __always_inline int account_bytes(__u64 sent, __u64 recv)
 {
     __u32 tgid = (__u32)(bpf_get_current_pid_tgid() >> 32);
 
-    struct proc_stats* curr_stat = bpf_map_lookup_elem(&STATS, &tgid);
+    struct ProcStats* curr_stat = bpf_map_lookup_elem(&STATS, &tgid);
     if (curr_stat) {
         if (sent)
             __sync_fetch_and_add(&curr_stat->sent_bytes, sent);
@@ -56,7 +56,7 @@ static __always_inline int account_bytes(__u64 sent, __u64 recv)
         return 0;
     }
 
-    struct proc_stats new_stat = {
+    struct ProcStats new_stat = {
         .sent_bytes = sent,
         .recv_bytes = recv,
     };

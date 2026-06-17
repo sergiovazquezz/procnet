@@ -2,7 +2,7 @@ use std::{fs, rc::Rc};
 
 use libbpf_rs::{MapCore, MapFlags, MapMut};
 
-use crate::{events::ProcEvent, procnet::types::proc_stats};
+use crate::{events::ProcEvent, procnet::types::ProcStats};
 
 struct ProcInfo {
     pub pid: u32,
@@ -19,7 +19,7 @@ pub struct StatsRow {
 }
 
 impl StatsRow {
-    pub fn new(pid: u32, stats: proc_stats, name: Rc<str>) -> Self {
+    pub fn new(pid: u32, stats: ProcStats, name: Rc<str>) -> Self {
         Self {
             pid,
             name,
@@ -72,12 +72,12 @@ impl StatsCollector {
     }
 }
 
-pub fn merge_values_for_pid(stats_map: &MapMut, pid: u32) -> Option<proc_stats> {
+pub fn merge_values_for_pid(stats_map: &MapMut, pid: u32) -> Option<ProcStats> {
     let key = pid.to_ne_bytes();
 
     let per_cpu_values = stats_map.lookup_percpu(&key, MapFlags::ANY).ok()??;
 
-    let mut merged = proc_stats::default();
+    let mut merged = ProcStats::default();
 
     for value in per_cpu_values {
         if let Some(value) = proc_stats_from_bytes(&value) {
@@ -89,12 +89,12 @@ pub fn merge_values_for_pid(stats_map: &MapMut, pid: u32) -> Option<proc_stats> 
     Some(merged)
 }
 
-fn proc_stats_from_bytes(data: &[u8]) -> Option<proc_stats> {
-    if data.len() != size_of::<proc_stats>() {
+fn proc_stats_from_bytes(data: &[u8]) -> Option<ProcStats> {
+    if data.len() != size_of::<ProcStats>() {
         return None;
     }
 
-    let stats = unsafe { data.as_ptr().cast::<proc_stats>().read_unaligned() };
+    let stats = unsafe { data.as_ptr().cast::<ProcStats>().read_unaligned() };
 
     Some(stats)
 }
