@@ -8,6 +8,8 @@ use crate::{events::ProcEvent, procnet::types::ProcStats};
 struct ProcInfo {
     pid: u32,
     name: Rc<str>,
+    last_sent_cum: u64,
+    last_recv_cum: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -17,20 +19,16 @@ pub struct StatsRow {
     pub sent_bytes: u64,
     pub recv_bytes: u64,
     pub total_bytes: u64,
-    last_sent_cum: u64,
-    last_recv_cum: u64,
 }
 
 impl StatsRow {
-    pub fn new(pid: u32, stats: ProcStats, name: Rc<str>) -> Self {
+    pub fn new(pid: u32, name: Rc<str>, sent_bytes: u64, recv_bytes: u64) -> Self {
         Self {
             pid,
             name,
-            sent_bytes: stats.sent_bytes,
-            recv_bytes: stats.recv_bytes,
-            total_bytes: stats.sent_bytes.saturating_add(stats.recv_bytes),
-            last_sent_cum: stats.sent_bytes,
-            last_recv_cum: stats.recv_bytes,
+            sent_bytes,
+            recv_bytes,
+            total_bytes: sent_bytes.saturating_add(recv_bytes),
         }
     }
 }
@@ -38,7 +36,6 @@ impl StatsRow {
 pub struct StatsCollector {
     procs: Vec<ProcInfo>,
     rows: Vec<StatsRow>,
-    seen_pids: Vec<u32>,
 }
 
 impl StatsCollector {
@@ -46,7 +43,6 @@ impl StatsCollector {
         Self {
             procs: Vec::with_capacity(20),
             rows: Vec::with_capacity(20),
-            seen_pids: Vec::default(),
         }
     }
 
@@ -56,6 +52,8 @@ impl StatsCollector {
                 self.procs.push(ProcInfo {
                     pid,
                     name: Rc::<str>::from(name),
+                    last_recv_cum: 0,
+                    last_sent_cum: 0,
                 });
             }
             ProcEvent::Exit(pid) => {
@@ -66,42 +64,26 @@ impl StatsCollector {
         }
     }
 
-    #[inline(never)]
     pub fn collect_rows(&mut self, stats_map: &MapMut) -> &[StatsRow] {
-        self.seen_pids.clear();
+        self.rows.clear();
 
-        for proc_info in &self.procs {
+        for proc_info in &mut self.procs {
             // TODO: Add an else to remove killed processes who's event might not have been processed
             if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
-                match self.rows.iter_mut().find(|x| x.pid == proc_info.pid) {
-                    Some(old_stats) => {
-                        let sent_delta =
-                            new_stats.sent_bytes.saturating_sub(old_stats.last_sent_cum);
+                let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.last_sent_cum);
+                let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.last_recv_cum);
 
-                        let recv_delta =
-                            new_stats.recv_bytes.saturating_sub(old_stats.last_recv_cum);
+                proc_info.last_sent_cum = new_stats.sent_bytes;
+                proc_info.last_recv_cum = new_stats.recv_bytes;
 
-                        old_stats.sent_bytes = sent_delta;
-                        old_stats.recv_bytes = recv_delta;
-                        old_stats.total_bytes = sent_delta + recv_delta;
-
-                        old_stats.last_sent_cum = new_stats.sent_bytes;
-                        old_stats.last_recv_cum = new_stats.recv_bytes;
-                    }
-                    None => {
-                        self.rows.push(StatsRow::new(
-                            proc_info.pid,
-                            new_stats,
-                            Rc::clone(&proc_info.name),
-                        ));
-                    }
-                }
-
-                self.seen_pids.push(proc_info.pid);
+                self.rows.push(StatsRow::new(
+                    proc_info.pid,
+                    Rc::clone(&proc_info.name),
+                    sent_delta,
+                    recv_delta,
+                ));
             }
         }
-
-        self.rows.retain(|x| self.seen_pids.contains(&x.pid));
 
         self.rows.sort_by(|a, b| {
             b.total_bytes
@@ -122,8 +104,8 @@ pub fn merge_values_for_pid(stats_map: &MapMut, pid: u32) -> Option<ProcStats> {
 
     for value in per_cpu_values {
         if let Some(value) = proc_stats_from_bytes(&value) {
-            merged.recv_bytes += value.recv_bytes;
-            merged.sent_bytes += value.sent_bytes;
+            merged.recv_bytes = merged.recv_bytes.saturating_add(value.recv_bytes);
+            merged.sent_bytes = merged.sent_bytes.saturating_add(value.sent_bytes);
             if merged.comm == [0u8; 16] && value.comm != [0u8; 16] {
                 merged.comm = value.comm;
             }
