@@ -10,6 +10,7 @@ struct ProcInfo {
     name: Rc<str>,
     last_sent_cum: u64,
     last_recv_cum: u64,
+    stale_counter: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +55,7 @@ impl StatsCollector {
                     name: Rc::<str>::from(name),
                     last_recv_cum: 0,
                     last_sent_cum: 0,
+                    stale_counter: 0,
                 });
             }
             ProcEvent::Exit(pid) => {
@@ -67,23 +69,37 @@ impl StatsCollector {
     pub fn collect_rows(&mut self, stats_map: &MapMut) -> &[StatsRow] {
         self.rows.clear();
 
-        for proc_info in &mut self.procs {
-            // TODO: Add an else to remove killed processes who's event might not have been processed
-            if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
-                let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.last_sent_cum);
-                let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.last_recv_cum);
-
-                proc_info.last_sent_cum = new_stats.sent_bytes;
-                proc_info.last_recv_cum = new_stats.recv_bytes;
-
-                self.rows.push(StatsRow::new(
-                    proc_info.pid,
-                    Rc::clone(&proc_info.name),
-                    sent_delta,
-                    recv_delta,
-                ));
+        self.procs.retain_mut(|proc_info| {
+            if proc_info.stale_counter >= 2 {
+                return false;
             }
-        }
+
+            match merge_values_for_pid(stats_map, proc_info.pid) {
+                Some(new_stats) => {
+                    let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.last_sent_cum);
+                    let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.last_recv_cum);
+
+                    proc_info.last_sent_cum = new_stats.sent_bytes;
+                    proc_info.last_recv_cum = new_stats.recv_bytes;
+
+                    proc_info.stale_counter = 0;
+
+                    self.rows.push(StatsRow::new(
+                        proc_info.pid,
+                        Rc::clone(&proc_info.name),
+                        sent_delta,
+                        recv_delta,
+                    ));
+
+                    true
+                }
+                None => {
+                    proc_info.stale_counter += 1;
+
+                    true
+                }
+            }
+        });
 
         self.rows.sort_by(|a, b| {
             b.total_bytes
