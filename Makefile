@@ -1,5 +1,8 @@
 .PHONY: clear-logs build-release run-release build-profile run-profile \
-	stats record flamegraph heaptrack clean
+	stats record flamegraph heaptrack clean lint
+
+lint:
+	cargo clippy --all-targets -- -D warnings
 
 clear-logs:
 	sudo rm logs/app.log

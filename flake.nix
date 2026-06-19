@@ -24,6 +24,7 @@
           pkg-config
           elfutils
           rustup
+          rust-analyzer
           zlib
           gnumake
           linuxHeaders

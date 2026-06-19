@@ -6,7 +6,8 @@ use libbpf_rs::{MapMut, RingBuffer, RingBufferBuilder};
 const EVENT_START: u32 = 1;
 const EVENT_EXIT: u32 = 2;
 
-/// The "proc_event" struct from the bpf.c code, since it isn't generated automatically
+/// The "proc_event" struct from the bpf.c code, since it isn't generated
+/// automatically
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct ProcEventBpf {
