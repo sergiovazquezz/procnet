@@ -19,7 +19,6 @@ struct ProcEvent {
 struct ProcStats {
     __u64 sent_bytes;
     __u64 recv_bytes;
-    __u8 comm[16];
 };
 
 struct {
@@ -83,9 +82,12 @@ static __always_inline int account_bytes(__u64 sent, __u64 recv)
         .recv_bytes = recv,
     };
 
-    bpf_get_current_comm(&new_stat.comm, sizeof(new_stat.comm));
     if (bpf_map_update_elem(&STATS, &tgid, &new_stat, BPF_NOEXIST) == 0) {
-        emit_start_event(tgid, new_stat.comm);
+        __u8 comm[16] = { 0 };
+        bpf_get_current_comm(comm, sizeof(comm));
+
+        emit_start_event(tgid, comm);
+
         return 0;
     }
 

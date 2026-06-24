@@ -4,7 +4,6 @@ use libbpf_rs::{MapCore, MapFlags, MapMut};
 
 use crate::{events::ProcEvent, procnet::types::ProcStats};
 
-#[derive(Debug)]
 struct ProcInfo {
     pid: u32,
     name: Rc<str>,
@@ -13,7 +12,6 @@ struct ProcInfo {
     stale_counter: u8,
 }
 
-#[derive(Clone, Debug)]
 pub struct StatsRow {
     pub pid: u32,
     pub name: Rc<str>,
