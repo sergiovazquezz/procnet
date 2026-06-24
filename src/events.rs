@@ -9,7 +9,6 @@ const EVENT_EXIT: u32 = 2;
 /// The "proc_event" struct from the bpf.c code, since it isn't generated
 /// automatically
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct ProcEventBpf {
     pub event_type: u32,
     pub pid: u32,

@@ -36,20 +36,20 @@ impl StatsRow {
 
 pub struct StatsCollector {
     procs: Vec<ProcInfo>,
-    rows: Vec<StatsRow>,
 }
 
 impl StatsCollector {
     pub fn new() -> Self {
         Self {
             procs: Vec::with_capacity(20),
-            rows: Vec::with_capacity(20),
         }
     }
 
     pub fn apply_event(&mut self, event: ProcEvent) {
         match event {
-            ProcEvent::Start { pid, name } => {
+            ProcEvent::Start { pid, mut name } => {
+                name.make_ascii_lowercase();
+
                 self.procs.push(ProcInfo {
                     pid,
                     name: Rc::<str>::from(name),
@@ -66,8 +66,8 @@ impl StatsCollector {
         }
     }
 
-    pub fn collect_rows(&mut self, stats_map: &MapMut) -> &[StatsRow] {
-        self.rows.clear();
+    pub fn collect_rows(&mut self, stats_map: &MapMut, out: &mut Vec<StatsRow>) {
+        out.clear();
 
         self.procs.retain_mut(|proc_info| {
             if proc_info.stale_counter >= 2 {
@@ -84,7 +84,7 @@ impl StatsCollector {
 
                     proc_info.stale_counter = 0;
 
-                    self.rows.push(StatsRow::new(
+                    out.push(StatsRow::new(
                         proc_info.pid,
                         Rc::clone(&proc_info.name),
                         sent_delta,
@@ -101,13 +101,11 @@ impl StatsCollector {
             }
         });
 
-        self.rows.sort_by(|a, b| {
+        out.sort_by(|a, b| {
             b.total_bytes
                 .cmp(&a.total_bytes)
                 .then_with(|| a.pid.cmp(&b.pid))
         });
-
-        &self.rows
     }
 }
 
@@ -122,9 +120,6 @@ pub fn merge_values_for_pid(stats_map: &MapMut, pid: u32) -> Option<ProcStats> {
         if let Some(value) = proc_stats_from_bytes(&value) {
             merged.recv_bytes = merged.recv_bytes.saturating_add(value.recv_bytes);
             merged.sent_bytes = merged.sent_bytes.saturating_add(value.sent_bytes);
-            if merged.comm == [0u8; 16] && value.comm != [0u8; 16] {
-                merged.comm = value.comm;
-            }
         }
     }
 
