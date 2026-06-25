@@ -13,7 +13,6 @@ pub const DEFAULT_SOCKET_PATH: &str = "/run/procnetd.sock";
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SnapshotData {
     pub tick: u64,
-    pub dropped: u64,
     pub rows: Vec<StatsRow>,
 }
 

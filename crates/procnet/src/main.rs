@@ -14,6 +14,7 @@ fn main() -> Result<()> {
     let (snap_tx, snap_rx) = mpsc::channel::<SnapshotData>();
 
     let mut rows: Vec<StatsRow> = Vec::with_capacity(20);
+    let mut tick: u64 = 0;
 
     let stream = ipc::connect_to_socket()?;
 
@@ -34,7 +35,10 @@ fn main() -> Result<()> {
     loop {
         loop {
             match snap_rx.try_recv() {
-                Ok(snap) => rows = snap.rows,
+                Ok(snap) => {
+                    tick = snap.tick;
+                    rows = snap.rows;
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     return Err(anyhow!("The daemon is not responding"));
@@ -42,11 +46,11 @@ fn main() -> Result<()> {
             }
         }
 
-        tui.draw(&rows)?;
+        tui.draw(tick, &rows)?;
 
         match tui.handle_event(Duration::from_millis(250))? {
             Action::Quit => break,
-            Action::Redraw => tui.draw(&rows)?,
+            Action::Redraw => tui.draw(tick, &rows)?,
             Action::None => {}
         }
     }

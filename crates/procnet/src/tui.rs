@@ -31,9 +31,9 @@ impl Tui {
         })
     }
 
-    pub fn draw(&mut self, rows: &[StatsRow]) -> Result<()> {
+    pub fn draw(&mut self, tick: u64, rows: &[StatsRow]) -> Result<()> {
         self.terminal
-            .draw(|frame| view::render(frame, rows, &self.state))
+            .draw(|frame| view::render(frame, tick, rows, &self.state))
             .context("failed to draw stats UI")?;
 
         Ok(())

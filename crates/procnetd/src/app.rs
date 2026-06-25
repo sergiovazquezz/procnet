@@ -47,7 +47,6 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
 
         let message = Message::Snapshot(SnapshotData {
             tick,
-            dropped: 0,
             rows: rows.clone(),
         });
 
