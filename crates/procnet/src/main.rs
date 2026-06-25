@@ -37,8 +37,7 @@ fn main() -> Result<()> {
                 Ok(snap) => rows = snap.rows,
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    // TODO: replace with some visual in TUI
-                    return Err(anyhow!("The snapshot mpsc sender has disconnected"));
+                    return Err(anyhow!("The daemon is not responding"));
                 }
             }
         }

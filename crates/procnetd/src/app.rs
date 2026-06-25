@@ -28,6 +28,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
     });
 
     let refresh_interval = Duration::from_secs(1);
+    let mut tick: u64 = 0;
 
     let mut stats = StatsCollector::new();
 
@@ -36,8 +37,6 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
     let mut rows: Vec<StatsRow> = Vec::with_capacity(20);
 
     let map_wrapper = MapMutWrapper(stats_map);
-
-    let mut tick: u64 = 0;
 
     loop {
         for event in events.drain_available()? {
@@ -55,8 +54,8 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
         server::update_streams(&stream_list, message)?;
 
         match rx.try_recv() {
-            Ok(e) => return Err(anyhow!("listener: {}", e)),
-            Err(TryRecvError::Disconnected) => return Err(anyhow!("listener thread exited")),
+            Ok(e) => return Err(anyhow!("Listener: {}", e)),
+            Err(TryRecvError::Disconnected) => return Err(anyhow!("Listener thread exited")),
             Err(TryRecvError::Empty) => {}
         }
 

@@ -26,7 +26,7 @@ pub enum Message {
 
 pub fn connect_to_socket() -> Result<UnixStream> {
     UnixStream::connect(DEFAULT_SOCKET_PATH).context(format!(
-        "Failed to connect to socket at {}",
+        "The daemon must be running first - Failed to connect to socket at {}",
         DEFAULT_SOCKET_PATH
     ))
 }
