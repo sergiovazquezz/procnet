@@ -31,11 +31,8 @@ pub fn connect_to_socket() -> Result<UnixStream> {
     ))
 }
 
-pub fn send_msg<T>(stream: &mut UnixStream, msg: T) -> Result<()>
-where
-    T: Serialize,
-{
-    serde_json::to_writer(&mut *stream, &msg)?;
+pub fn send_msg(stream: &mut UnixStream, msg: &Message) -> Result<()> {
+    serde_json::to_writer(&mut *stream, msg)?;
     stream.write_all(b"\n")?;
     Ok(())
 }
