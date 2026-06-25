@@ -42,7 +42,7 @@ pub fn read_msg(reader: &mut BufReader<UnixStream>) -> Result<Message> {
 
     let n = reader.read_line(&mut line)?;
     if n == 0 {
-        return Err(anyhow!("eof reached, daemon closed"));
+        return Err(anyhow!("EOF reached, daemon closed"));
     }
 
     let response: Message = serde_json::from_str(&line)?;

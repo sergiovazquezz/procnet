@@ -1,8 +1,6 @@
-mod tui;
-
 use std::{io::BufReader, sync::mpsc, thread, time::Duration};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use procnet_core::{
     ipc::{self, Message, SnapshotData},
     stats::StatsRow,
@@ -10,34 +8,26 @@ use procnet_core::{
 
 use crate::tui::{Action, Tui};
 
-fn main() -> Result<()> {
-    let stream = ipc::connect_to_socket()?;
+mod tui;
 
+fn main() -> Result<()> {
     let (snap_tx, snap_rx) = mpsc::channel::<SnapshotData>();
 
-    let mut tui = Tui::new()?;
-
     let mut rows: Vec<StatsRow> = Vec::with_capacity(20);
+
+    let stream = ipc::connect_to_socket()?;
+
+    let mut tui = Tui::new()?;
 
     thread::spawn(move || {
         let mut reader = BufReader::new(stream);
 
         loop {
-            match ipc::read_msg(&mut reader) {
-                Ok(Message::Snapshot(s)) => {
-                    if snap_tx.send(s).is_err() {
-                        break;
-                    }
-                }
-                Ok(Message::Error(e)) => {
-                    log::error!("{}", e);
+            while let Ok(Message::Snapshot(s)) = ipc::read_msg(&mut reader) {
+                if snap_tx.send(s).is_err() {
                     break;
                 }
-                Err(e) => {
-                    log::error!("{}", e);
-                    break;
-                }
-            };
+            }
         }
     });
 
@@ -48,7 +38,7 @@ fn main() -> Result<()> {
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
                     // TODO: replace with some visual in TUI
-                    return Ok(());
+                    return Err(anyhow!("The snapshot mpsc sender has disconnected"));
                 }
             }
         }
