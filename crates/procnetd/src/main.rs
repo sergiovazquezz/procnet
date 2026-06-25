@@ -21,8 +21,8 @@ use procnet::ProcnetSkelBuilder;
 
 mod app;
 mod events;
-mod stats;
-mod tui;
+mod server;
+mod stats_map;
 
 fn main() -> Result<()> {
     bump_memlock_rlimit()?;

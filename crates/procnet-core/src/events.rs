@@ -1,13 +1,10 @@
-use std::{cell::RefCell, fs, rc::Rc};
+use std::fs;
 
-use anyhow::Result;
-use libbpf_rs::{MapMut, RingBuffer, RingBufferBuilder};
-
-const EVENT_START: u32 = 1;
-const EVENT_EXIT: u32 = 2;
+pub const EVENT_START: u32 = 1;
+pub const EVENT_EXIT: u32 = 2;
 
 /// The "proc_event" struct from the bpf.c code, since it isn't generated
-/// automatically
+/// automatically.
 #[repr(C)]
 pub struct ProcEventBpf {
     pub event_type: u32,
@@ -15,45 +12,13 @@ pub struct ProcEventBpf {
     pub comm: [u8; 16],
 }
 
+#[derive(Clone)]
 pub enum ProcEvent {
     Start { pid: u32, name: String },
     Exit(u32),
 }
 
-pub struct EventReader<'a> {
-    ringbuf: RingBuffer<'a>,
-    queue: Rc<RefCell<Vec<ProcEvent>>>,
-}
-
-impl<'a> EventReader<'a> {
-    pub fn new(events_map: &'a MapMut) -> Result<Self> {
-        let queue = Rc::new(RefCell::new(Vec::<ProcEvent>::new()));
-        let callback_queue = Rc::clone(&queue);
-
-        let mut builder = RingBufferBuilder::new();
-
-        builder.add(events_map, move |data: &[u8]| {
-            if let Some(event) = parse_proc_event(data) {
-                callback_queue.borrow_mut().push(event);
-            }
-
-            0i32
-        })?;
-
-        let ringbuf = builder.build()?;
-
-        Ok(EventReader { ringbuf, queue })
-    }
-
-    /// Consume all pending events, then collect all the pid's from the queue
-    pub fn drain_available(&mut self) -> Result<Vec<ProcEvent>> {
-        self.ringbuf.consume()?;
-
-        Ok(self.queue.borrow_mut().drain(..).collect())
-    }
-}
-
-fn parse_proc_event(data: &[u8]) -> Option<ProcEvent> {
+pub fn parse_proc_event(data: &[u8]) -> Option<ProcEvent> {
     if data.len() != size_of::<ProcEventBpf>() {
         return None;
     }

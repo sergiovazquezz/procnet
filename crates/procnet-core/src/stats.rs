@@ -1,27 +1,39 @@
-use std::rc::Rc;
+use serde::{Deserialize, Serialize};
 
-use libbpf_rs::{MapCore, MapFlags, MapMut};
+use crate::events::ProcEvent;
 
-use crate::{events::ProcEvent, procnet::types::ProcStats};
+#[repr(C)]
+#[derive(Default, Clone)]
+struct ProcStats {
+    pub sent_bytes: u64,
+    pub recv_bytes: u64,
+}
+
+/// Abstraction over a per-CPU BPF map lookup so the stats collector can be
+/// tested and used without a direct `libbpf-rs` dependency.
+pub trait StatsMap {
+    fn lookup_percpu(&self, key: &[u8]) -> Option<Vec<Vec<u8>>>;
+}
 
 struct ProcInfo {
     pid: u32,
-    name: Rc<str>,
+    name: String,
     last_sent_cum: u64,
     last_recv_cum: u64,
     stale_counter: u8,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StatsRow {
     pub pid: u32,
-    pub name: Rc<str>,
+    pub name: String,
     pub sent_bytes: u64,
     pub recv_bytes: u64,
     pub total_bytes: u64,
 }
 
 impl StatsRow {
-    pub fn new(pid: u32, name: Rc<str>, sent_bytes: u64, recv_bytes: u64) -> Self {
+    pub fn new(pid: u32, name: String, sent_bytes: u64, recv_bytes: u64) -> Self {
         Self {
             pid,
             name,
@@ -34,6 +46,12 @@ impl StatsRow {
 
 pub struct StatsCollector {
     procs: Vec<ProcInfo>,
+}
+
+impl Default for StatsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StatsCollector {
@@ -50,7 +68,7 @@ impl StatsCollector {
 
                 self.procs.push(ProcInfo {
                     pid,
-                    name: Rc::<str>::from(name),
+                    name,
                     last_recv_cum: 0,
                     last_sent_cum: 0,
                     stale_counter: 0,
@@ -64,7 +82,7 @@ impl StatsCollector {
         }
     }
 
-    pub fn collect_rows(&mut self, stats_map: &MapMut, out: &mut Vec<StatsRow>) {
+    pub fn collect_rows(&mut self, stats_map: &impl StatsMap, out: &mut Vec<StatsRow>) {
         out.clear();
 
         self.procs.retain_mut(|proc_info| {
@@ -84,7 +102,7 @@ impl StatsCollector {
 
                     out.push(StatsRow::new(
                         proc_info.pid,
-                        Rc::clone(&proc_info.name),
+                        proc_info.name.clone(),
                         sent_delta,
                         recv_delta,
                     ));
@@ -98,19 +116,13 @@ impl StatsCollector {
                 }
             }
         });
-
-        out.sort_by(|a, b| {
-            b.total_bytes
-                .cmp(&a.total_bytes)
-                .then_with(|| a.pid.cmp(&b.pid))
-        });
     }
 }
 
-pub fn merge_values_for_pid(stats_map: &MapMut, pid: u32) -> Option<ProcStats> {
+fn merge_values_for_pid(stats_map: &impl StatsMap, pid: u32) -> Option<ProcStats> {
     let key = pid.to_ne_bytes();
 
-    let per_cpu_values = stats_map.lookup_percpu(&key, MapFlags::ANY).ok()??;
+    let per_cpu_values = stats_map.lookup_percpu(&key)?;
 
     let mut merged = ProcStats::default();
 

@@ -11,7 +11,7 @@ use ratatui::{
     crossterm::event::{self, Event, KeyEventKind},
 };
 
-use crate::stats::StatsRow;
+use procnet_core::stats::StatsRow;
 
 pub use state::Action;
 pub use state::Pane;
