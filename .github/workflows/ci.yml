@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer@v16
+
+      - uses: DeterminateSystems/magic-nix-cache@v9
+
+      - name: Provision toolchain
+        run: nix develop --command rustup show
+
+      - name: Rust formatting
+        run: nix develop --command cargo fmt --all -- --check
+
+      - name: C formatting (BPF)
+        run: |
+          nix develop --command clang-format --dry-run --Werror \
+            crates/procnetd/src/bpf/procnet.bpf.c
+
+      - name: Build
+        run: nix develop --command cargo build --workspace --all-targets
+
+      - name: Clippy
+        run: nix develop --command cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: nix develop --command cargo test --workspace
