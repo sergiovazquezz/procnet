@@ -16,10 +16,9 @@ pub fn run_listener(stream_list: Arc<Mutex<Vec<UnixStream>>>, tx: Sender<String>
 
     let listener = match UnixListener::bind(DEFAULT_SOCKET_PATH) {
         Ok(l) => {
-            if let Err(e) = set_permissions(
-                DEFAULT_SOCKET_PATH,
-                std::fs::Permissions::from_mode(0o666),
-            ) {
+            if let Err(e) =
+                set_permissions(DEFAULT_SOCKET_PATH, std::fs::Permissions::from_mode(0o666))
+            {
                 let _ = tx.send(format!("chmod {}: {}", DEFAULT_SOCKET_PATH, e));
                 return;
             }
