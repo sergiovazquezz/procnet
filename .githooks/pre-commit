@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cargo fmt --all -- --check
+
+clang-format --dry-run --Werror crates/procnetd/src/bpf/procnet.bpf.c
+
+cargo clippy --workspace --all-targets -- -D warnings
