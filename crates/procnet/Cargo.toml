@@ -2,9 +2,12 @@
 name = "procnet"
 version.workspace = true
 edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
 procnet-core = { path = "../procnet-core" }
 ratatui = "0.30.0"
-log = { workspace = true }
