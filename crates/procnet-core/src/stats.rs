@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::events::ProcEvent;
 
 #[repr(C)]
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 struct ProcStats {
     pub sent_bytes: u64,
     pub recv_bytes: u64,
@@ -15,6 +15,7 @@ pub trait StatsMap {
     fn lookup_percpu(&self, key: &[u8]) -> Option<Vec<Vec<u8>>>;
 }
 
+#[derive(Debug)]
 struct ProcInfo {
     pid: u32,
     name: String,
@@ -23,7 +24,7 @@ struct ProcInfo {
     stale_counter: u8,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StatsRow {
     pub pid: u32,
     pub name: String,
@@ -144,4 +145,192 @@ fn proc_stats_from_bytes(data: &[u8]) -> Option<ProcStats> {
     let stats = unsafe { data.as_ptr().cast::<ProcStats>().read_unaligned() };
 
     Some(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct FakeStatsMap {
+        data: HashMap<Vec<u8>, Vec<Vec<u8>>>,
+    }
+
+    impl StatsMap for FakeStatsMap {
+        fn lookup_percpu(&self, key: &[u8]) -> Option<Vec<Vec<u8>>> {
+            self.data.get(key).cloned()
+        }
+    }
+
+    impl FakeStatsMap {
+        fn new(pid: u32, sent: u64, recv: u64) -> Self {
+            let mut map = Self {
+                data: HashMap::new(),
+            };
+
+            map.data.insert(
+                pid.to_ne_bytes().to_vec(),
+                vec![proc_stats_bytes(sent, recv)],
+            );
+
+            map
+        }
+
+        /// Creates two vectors for a given `pid`, the second having `10` for
+        /// sent and recv.
+        fn new_two_values(pid: u32, sent: u64, recv: u64) -> Self {
+            let mut map = Self {
+                data: HashMap::new(),
+            };
+
+            map.data.insert(
+                pid.to_ne_bytes().to_vec(),
+                vec![proc_stats_bytes(sent, recv), proc_stats_bytes(10, 10)],
+            );
+
+            map
+        }
+    }
+
+    fn proc_stats_bytes(sent: u64, recv: u64) -> Vec<u8> {
+        let mut v: Vec<u8> = Vec::with_capacity(size_of::<ProcStats>());
+
+        v.extend_from_slice(&sent.to_ne_bytes());
+        v.extend_from_slice(&recv.to_ne_bytes());
+
+        v
+    }
+
+    #[test]
+    fn stats_row_new_saturates_on_overflow() {
+        let row = StatsRow::new(130, "firefox".into(), u64::MAX, 10);
+        assert_eq!(row.total_bytes, u64::MAX);
+    }
+
+    #[test]
+    fn apply_event_pushes_and_is_lowercase() {
+        let mut stats = StatsCollector::default();
+        stats.apply_event(ProcEvent::Start {
+            pid: 10,
+            name: "GOOGLE".into(),
+        });
+
+        assert_eq!(stats.procs[0].name, "google".to_string());
+
+        let (sent, recv) = (100, 200);
+        let map = FakeStatsMap::new(10, sent, recv);
+
+        let mut rows: Vec<StatsRow> = Vec::new();
+
+        stats.collect_rows(&map, &mut rows);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "google".to_string());
+    }
+
+    #[test]
+    fn apply_event_removes_only_present() {
+        let start_event = ProcEvent::Start {
+            pid: 140,
+            name: "librewolf".into(),
+        };
+
+        let mut stats = StatsCollector::default();
+        stats.apply_event(start_event);
+
+        stats.apply_event(ProcEvent::Exit(10));
+        assert_eq!(stats.procs.len(), 1);
+
+        stats.apply_event(ProcEvent::Exit(140));
+        assert!(stats.procs.is_empty());
+    }
+
+    #[test]
+    fn collect_rows_computes_delta() {
+        let mut stats = StatsCollector::default();
+        stats.apply_event(ProcEvent::Start {
+            pid: 7,
+            name: "vim".into(),
+        });
+
+        let (sent, recv) = (100, 200);
+        let map = FakeStatsMap::new(7, sent, recv);
+        let mut rows: Vec<StatsRow> = Vec::new();
+
+        stats.collect_rows(&map, &mut rows);
+        assert_eq!(rows[0].sent_bytes, sent);
+        assert_eq!(rows[0].recv_bytes, recv);
+
+        let (sent2, recv2) = (sent + 20, recv + 10);
+        let map = FakeStatsMap::new(7, sent2, recv2);
+
+        stats.collect_rows(&map, &mut rows);
+        assert_eq!(rows[0].sent_bytes, sent2.saturating_sub(sent));
+        assert_eq!(rows[0].recv_bytes, recv2.saturating_sub(recv));
+
+        let (sent3, recv3) = (sent, recv + 50);
+        let map = FakeStatsMap::new(7, sent3, recv3);
+
+        stats.collect_rows(&map, &mut rows);
+        assert_eq!(rows[0].sent_bytes, sent3.saturating_sub(sent2));
+        assert_eq!(rows[0].recv_bytes, recv3.saturating_sub(recv2));
+    }
+
+    #[test]
+    fn collect_rows_evicts_process_missing_for_two_ticks() {
+        let mut stats = StatsCollector::default();
+        stats.apply_event(ProcEvent::Start {
+            pid: 7,
+            name: "vim".into(),
+        });
+        assert_eq!(stats.procs.len(), 1);
+
+        let map = FakeStatsMap::default();
+        let mut rows: Vec<StatsRow> = Vec::new();
+
+        stats.collect_rows(&map, &mut rows);
+        assert_eq!(stats.procs.len(), 1);
+
+        stats.collect_rows(&map, &mut rows);
+        assert_eq!(stats.procs.len(), 1);
+
+        stats.collect_rows(&map, &mut rows);
+        assert!(stats.procs.is_empty());
+    }
+
+    #[test]
+    fn merge_values_for_pid_success() {
+        let map = FakeStatsMap::new_two_values(3, 50, 110);
+
+        let merged = merge_values_for_pid(&map, 3).unwrap();
+
+        assert_eq!(
+            merged,
+            ProcStats {
+                sent_bytes: 50 + 10,
+                recv_bytes: 110 + 10
+            }
+        )
+    }
+
+    #[test]
+    fn proc_stats_from_bytes_valid_length() {
+        let mut bytes: Vec<u8> = Vec::with_capacity(size_of::<ProcStats>());
+        let (sent_bytes, recv_bytes) = (10u64, 20u64);
+
+        bytes.extend_from_slice(&sent_bytes.to_ne_bytes());
+        bytes.extend_from_slice(&recv_bytes.to_ne_bytes());
+
+        assert_eq!(
+            proc_stats_from_bytes(&bytes).unwrap(),
+            ProcStats {
+                sent_bytes,
+                recv_bytes
+            }
+        );
+
+        assert_eq!(proc_stats_from_bytes(&[0u8; 3]), None);
+    }
 }
