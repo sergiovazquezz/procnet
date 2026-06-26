@@ -8,6 +8,7 @@ pub enum SortKey {
 }
 
 impl SortKey {
+    // TEST: Ensure that all of the variants are a part of `ALL`
     pub const ALL: [Self; 5] = [Self::Pid, Self::Name, Self::Sent, Self::Recv, Self::Total];
 
     pub fn label(self) -> &'static str {
@@ -107,6 +108,7 @@ pub enum Unit {
 }
 
 impl Unit {
+    // TEST: Ensure that all of the variants are a part of `ALL`
     pub const ALL: [Self; 6] = [Self::Auto, Self::B, Self::Kb, Self::Mb, Self::Gb, Self::Tb];
 
     pub fn label(self) -> &'static str {

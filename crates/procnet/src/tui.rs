@@ -14,7 +14,6 @@ use ratatui::{
 use procnet_core::stats::StatsRow;
 
 pub use state::Action;
-pub use state::Pane;
 use state::TuiState;
 
 pub struct Tui {

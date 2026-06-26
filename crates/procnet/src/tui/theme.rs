@@ -1,7 +1,7 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
 
-use super::state::Unit;
+use crate::tui::state::Unit;
 
 /// 16-color ANSI palette used across the TUI. Sticking to the basic set for
 /// portability across terminals.

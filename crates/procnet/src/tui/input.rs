@@ -1,8 +1,6 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::tui::Pane;
-
-use super::state::{Action, SortKey, TuiState, Unit};
+use crate::tui::state::{Action, Pane, SortKey, TuiState, Unit};
 
 pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> Action {
     match state.active_pane {

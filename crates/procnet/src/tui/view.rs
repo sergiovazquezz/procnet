@@ -6,12 +6,14 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
-use crate::tui::Pane;
 use procnet_core::stats::StatsRow;
 
-use super::state::{FilterTarget, SortDir, SortKey, TuiState, Unit};
-use super::theme;
+use crate::tui::{
+    state::{FilterTarget, Pane, SortDir, SortKey, TuiState, Unit},
+    theme,
+};
 
+// TEST: Add a unit test, checking `rows`
 pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
     rows.sort_by(|&a, &b| {
         let primary = match key {
