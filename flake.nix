@@ -1,39 +1,49 @@
 {
-  description = "A TUI for attributing network usage to processes via eBPF.";
+  description = "A TUI for attributing network usage to processes via eBPF";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs =
-    { nixpkgs, ... }:
-    let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs {
-        inherit system;
-      };
-    in
     {
-      devShells.${system}.default = pkgs.mkShell {
-        packages = with pkgs; [
+      nixpkgs,
+      flake-utils,
+      ...
+    }:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (
+      system:
+      let
+        pkgs = import nixpkgs { inherit system; };
+
+        buildDeps = with pkgs; [
+          bpftools
           clang
           clang-tools
-          llvm
-          libbpf
-          bpftools
-          pkg-config
           elfutils
-          rustup
-          rust-analyzer
-          zlib
-          gnumake
+          libbpf
           linuxHeaders
+          pkg-config
+          rustup
+          zlib
         ];
 
-        CPATH = pkgs.lib.makeSearchPathOutput "dev" "include" [
-          pkgs.libbpf
-          pkgs.linuxHeaders
+        devDeps = with pkgs; [
+          gnumake
+          rust-analyzer
         ];
-      };
-    };
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          packages = buildDeps ++ devDeps;
+
+          CPATH = pkgs.lib.makeSearchPathOutput "dev" "include" [
+            pkgs.libbpf
+            pkgs.linuxHeaders
+          ];
+        };
+      }
+    );
 }
+
