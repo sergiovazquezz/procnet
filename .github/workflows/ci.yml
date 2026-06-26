@@ -18,9 +18,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer@v16
+      - uses: DeterminateSystems/nix-installer@v3.21.2
 
-      - uses: DeterminateSystems/magic-nix-cache@v9
+      - uses: DeterminateSystems/magic-nix-cache@v0.1.6
 
       - name: Provision toolchain
         run: nix develop --command rustup show
