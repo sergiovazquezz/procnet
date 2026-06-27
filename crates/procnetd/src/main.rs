@@ -10,11 +10,16 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 
+#[allow(
+    warnings,
+    clippy::all,
+    clippy::pedantic,
+    clippy::nursery,
+    clippy::cargo,
+    clippy::restriction
+)]
 mod procnet {
-    include!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/bpf/procnet.skel.rs"
-    ));
+    include!(concat!(env!("OUT_DIR"), "/procnet.skel.rs"));
 }
 
 use procnet::ProcnetSkelBuilder;
@@ -58,7 +63,7 @@ fn bump_memlock_rlimit() -> Result<()> {
         rlim_max: limit,
     };
 
-    let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlimit) };
+    let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &raw const rlimit) };
     if ret != 0 {
         return Err(std::io::Error::last_os_error()).context("failed to increase RLIMIT_MEMLOCK");
     }

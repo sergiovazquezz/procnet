@@ -43,9 +43,8 @@ impl Tui {
             return Ok(Action::None);
         }
 
-        let key = match event::read()? {
-            Event::Key(k) => k,
-            _ => return Ok(Action::None),
+        let Event::Key(key) = event::read()? else {
+            return Ok(Action::None);
         };
 
         if key.kind != KeyEventKind::Press {

@@ -9,21 +9,21 @@ edition = "2024"
 [workspace.lints.rust]
 unused = "warn"
 future_incompatible = "warn"
-let_underscore = "warn"
 nonstandard_style = "warn"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
-cargo = { level = "warn", priority = -1 }
 
-missing_errors_doc = "allow"
-
+cast_precision_loss = "allow"
+inline_always = "allow"
 panic = "warn"
 unwrap_used = "warn"
 expect_used = "warn"
 dbg_macro = "warn"
 todo = "warn"
+missing_errors_doc = "allow"
+uninlined_format_args = "allow"
 
 [workspace.dependencies]
 anyhow = "1.0.102"

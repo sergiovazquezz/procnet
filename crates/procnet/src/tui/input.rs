@@ -11,29 +11,31 @@ pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> Action {
     }
 }
 
+#[expect(clippy::missing_const_for_fn)]
 fn handle_help_modal(state: &mut TuiState, key: KeyEvent) -> Action {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
     match key.code {
-        KeyCode::Char('?') | KeyCode::Char('h') | KeyCode::Char('H') | KeyCode::Esc => {
+        KeyCode::Char('?' | 'h' | 'H') | KeyCode::Esc => {
             state.active_pane = Pane::Command;
             Action::Redraw
         }
-        KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
-        KeyCode::Char('c') | KeyCode::Char('C') if ctrl => Action::Quit,
+        KeyCode::Char('q' | 'Q') => Action::Quit,
+        KeyCode::Char('c' | 'C') if ctrl => Action::Quit,
         _ => Action::None,
     }
 }
 
+#[expect(clippy::missing_const_for_fn)]
 fn handle_unit_picker(state: &mut TuiState, key: KeyEvent) -> Action {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let len = Unit::ALL.len();
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') => {
+        KeyCode::Up | KeyCode::Char('k' | 'K') => {
             state.unit_picker_cursor = (state.unit_picker_cursor + len - 1) % len;
             Action::Redraw
         }
-        KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') => {
+        KeyCode::Down | KeyCode::Char('j' | 'J') => {
             state.unit_picker_cursor = (state.unit_picker_cursor + 1) % len;
             Action::Redraw
         }
@@ -42,12 +44,12 @@ fn handle_unit_picker(state: &mut TuiState, key: KeyEvent) -> Action {
             state.active_pane = Pane::Command;
             Action::Redraw
         }
-        KeyCode::Esc | KeyCode::Char('u') | KeyCode::Char('U') => {
+        KeyCode::Esc | KeyCode::Char('u' | 'U') => {
             state.active_pane = Pane::Command;
             Action::Redraw
         }
-        KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
-        KeyCode::Char('c') | KeyCode::Char('C') if ctrl => Action::Quit,
+        KeyCode::Char('q' | 'Q') => Action::Quit,
+        KeyCode::Char('c' | 'C') if ctrl => Action::Quit,
         _ => Action::None,
     }
 }
@@ -71,7 +73,7 @@ fn handle_filter_input(state: &mut TuiState, key: KeyEvent) -> Action {
             state.active_pane = Pane::Command;
         }
         _ => return Action::None,
-    };
+    }
 
     Action::Redraw
 }
@@ -80,13 +82,13 @@ fn handle_command(state: &mut TuiState, key: KeyEvent) -> Action {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
     match key.code {
-        KeyCode::Char('q') | KeyCode::Char('Q') => Action::Quit,
-        KeyCode::Char('c') | KeyCode::Char('C') if ctrl => Action::Quit,
-        KeyCode::Char('r') | KeyCode::Char('R') => {
+        KeyCode::Char('q' | 'Q') => Action::Quit,
+        KeyCode::Char('c' | 'C') if ctrl => Action::Quit,
+        KeyCode::Char('r' | 'R') => {
             state.sort_dir = state.sort_dir.toggle();
             Action::Redraw
         }
-        KeyCode::Char('u') | KeyCode::Char('U') => {
+        KeyCode::Char('u' | 'U') => {
             state.active_pane = Pane::Unit;
             state.unit_picker_cursor = state.unit.index();
             Action::Redraw
@@ -111,11 +113,11 @@ fn handle_command(state: &mut TuiState, key: KeyEvent) -> Action {
             }
         }
         KeyCode::Esc => {
-            if !state.filter_text.is_empty() {
+            if state.filter_text.is_empty() {
+                Action::None
+            } else {
                 state.filter_text.clear();
                 Action::Redraw
-            } else {
-                Action::None
             }
         }
         _ => Action::None,

@@ -34,7 +34,8 @@ pub struct StatsRow {
 }
 
 impl StatsRow {
-    pub fn new(pid: u32, name: String, sent_bytes: u64, recv_bytes: u64) -> Self {
+    #[must_use]
+    pub const fn new(pid: u32, name: String, sent_bytes: u64, recv_bytes: u64) -> Self {
         Self {
             pid,
             name,
@@ -56,6 +57,7 @@ impl Default for StatsCollector {
 }
 
 impl StatsCollector {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             procs: Vec::with_capacity(20),
@@ -91,31 +93,26 @@ impl StatsCollector {
                 return false;
             }
 
-            match merge_values_for_pid(stats_map, proc_info.pid) {
-                Some(new_stats) => {
-                    let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.last_sent_cum);
-                    let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.last_recv_cum);
+            if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
+                let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.last_sent_cum);
+                let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.last_recv_cum);
 
-                    proc_info.last_sent_cum = new_stats.sent_bytes;
-                    proc_info.last_recv_cum = new_stats.recv_bytes;
+                proc_info.last_sent_cum = new_stats.sent_bytes;
+                proc_info.last_recv_cum = new_stats.recv_bytes;
 
-                    proc_info.stale_counter = 0;
+                proc_info.stale_counter = 0;
 
-                    out.push(StatsRow::new(
-                        proc_info.pid,
-                        proc_info.name.clone(),
-                        sent_delta,
-                        recv_delta,
-                    ));
-
-                    true
-                }
-                None => {
-                    proc_info.stale_counter += 1;
-
-                    true
-                }
+                out.push(StatsRow::new(
+                    proc_info.pid,
+                    proc_info.name.clone(),
+                    sent_delta,
+                    recv_delta,
+                ));
+            } else {
+                proc_info.stale_counter += 1;
             }
+
+            true
         });
     }
 }
@@ -137,6 +134,7 @@ fn merge_values_for_pid(stats_map: &impl StatsMap, pid: u32) -> Option<ProcStats
     Some(merged)
 }
 
+#[expect(clippy::missing_const_for_fn)]
 fn proc_stats_from_bytes(data: &[u8]) -> Option<ProcStats> {
     if data.len() != size_of::<ProcStats>() {
         return None;
@@ -148,6 +146,7 @@ fn proc_stats_from_bytes(data: &[u8]) -> Option<ProcStats> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use std::collections::HashMap;
 
@@ -312,7 +311,7 @@ mod tests {
                 sent_bytes: 50 + 10,
                 recv_bytes: 110 + 10
             }
-        )
+        );
     }
 
     #[test]
@@ -323,8 +322,10 @@ mod tests {
         bytes.extend_from_slice(&sent_bytes.to_ne_bytes());
         bytes.extend_from_slice(&recv_bytes.to_ne_bytes());
 
+        let result = proc_stats_from_bytes(&bytes).unwrap();
+
         assert_eq!(
-            proc_stats_from_bytes(&bytes).unwrap(),
+            result,
             ProcStats {
                 sent_bytes,
                 recv_bytes

@@ -20,7 +20,7 @@ use crate::{events::EventReader, server, stats_map::MapMutWrapper};
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
     let (tx, rx) = mpsc::channel::<String>();
 
-    let stream_list: Arc<Mutex<Vec<UnixStream>>> = Arc::new(Mutex::new(Vec::with_capacity(2)));
+    let stream_list = Arc::new(Mutex::new(Vec::<UnixStream>::with_capacity(2)));
     let list_for_server = Arc::clone(&stream_list);
 
     thread::spawn(move || {
@@ -32,7 +32,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
 
     let mut stats = StatsCollector::default();
 
-    let mut events = EventReader::new(events_map)?;
+    let events = EventReader::new(events_map)?;
 
     let mut rows: Vec<StatsRow> = Vec::with_capacity(20);
 
@@ -50,7 +50,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
             rows: rows.clone(),
         });
 
-        server::update_streams(&stream_list, message)?;
+        server::update_streams(&stream_list, &message)?;
 
         match rx.try_recv() {
             Ok(e) => return Err(anyhow!("Listener: {}", e)),
