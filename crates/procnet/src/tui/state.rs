@@ -11,7 +11,7 @@ impl SortKey {
     // TEST: Ensure that all of the variants are a part of `ALL`
     pub const ALL: [Self; 5] = [Self::Pid, Self::Name, Self::Sent, Self::Recv, Self::Total];
 
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Pid => "PID",
             Self::Name => "Name",
@@ -21,7 +21,7 @@ impl SortKey {
         }
     }
 
-    pub fn from_digit(d: char) -> Option<Self> {
+    pub const fn from_digit(d: char) -> Option<Self> {
         match d {
             '1' => Some(Self::Pid),
             '2' => Some(Self::Name),
@@ -33,7 +33,7 @@ impl SortKey {
     }
 
     /// Inverse of `from_digit`: the digit key that selects this column.
-    pub fn digit(self) -> char {
+    pub const fn digit(self) -> char {
         match self {
             Self::Pid => '1',
             Self::Name => '2',
@@ -43,7 +43,7 @@ impl SortKey {
         }
     }
 
-    pub fn default_direction(self) -> SortDir {
+    pub const fn default_direction(self) -> SortDir {
         match self {
             Self::Pid | Self::Name => SortDir::Asc,
             Self::Sent | Self::Recv | Self::Total => SortDir::Desc,
@@ -58,14 +58,14 @@ pub enum SortDir {
 }
 
 impl SortDir {
-    pub fn arrow(self) -> &'static str {
+    pub const fn arrow(self) -> &'static str {
         match self {
             Self::Asc => "▲",
             Self::Desc => "▼",
         }
     }
 
-    pub fn toggle(self) -> Self {
+    pub const fn toggle(self) -> Self {
         match self {
             Self::Asc => Self::Desc,
             Self::Desc => Self::Asc,
@@ -80,14 +80,14 @@ pub enum FilterTarget {
 }
 
 impl FilterTarget {
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Name => "name",
             Self::Pid => "pid",
         }
     }
 
-    pub fn toggle(self) -> Self {
+    pub const fn toggle(self) -> Self {
         match self {
             Self::Name => Self::Pid,
             Self::Pid => Self::Name,
@@ -111,7 +111,7 @@ impl Unit {
     // TEST: Ensure that all of the variants are a part of `ALL`
     pub const ALL: [Self; 6] = [Self::Auto, Self::B, Self::Kb, Self::Mb, Self::Gb, Self::Tb];
 
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Auto => "Auto",
             Self::B => "B",
@@ -124,7 +124,7 @@ impl Unit {
 
     /// Divisor used when formatting with a fixed unit. `Auto` returns 0
     /// (unused — auto formatting picks a divisor per value).
-    pub fn divisor(self) -> u64 {
+    pub const fn divisor(self) -> u64 {
         const KB: u64 = 1024;
         const MB: u64 = 1024 * 1024;
         const GB: u64 = 1024 * 1024 * 1024;

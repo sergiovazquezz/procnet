@@ -7,7 +7,7 @@ use procnet_core::events::ProcEvent;
 pub const EVENT_START: u32 = 1;
 pub const EVENT_EXIT: u32 = 2;
 
-/// The "proc_event" struct from the bpf.c code, since it isn't generated
+/// The `ProcEvent` struct from the bpf.c code, since it isn't generated
 /// automatically.
 #[repr(C)]
 pub struct ProcEventBpf {
@@ -42,7 +42,7 @@ impl<'a> EventReader<'a> {
     }
 
     /// Consume all pending events, then collect all the pids from the queue.
-    pub fn drain_available(&mut self) -> Result<Vec<ProcEvent>> {
+    pub fn drain_available(&self) -> Result<Vec<ProcEvent>> {
         self.ringbuf.consume()?;
 
         Ok(self.queue.borrow_mut().drain(..).collect())

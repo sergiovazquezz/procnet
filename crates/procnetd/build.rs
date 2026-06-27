@@ -5,6 +5,7 @@ use libbpf_cargo::SkeletonBuilder;
 
 const SRC: &str = "src/bpf/procnet.bpf.c";
 
+#[allow(clippy::expect_used)]
 fn main() {
     if let Ok(hardening) = env::var("NIX_HARDENING_ENABLE") {
         let filtered = hardening
@@ -20,10 +21,7 @@ fn main() {
     }
 
     let out =
-        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set"))
-            .join("src")
-            .join("bpf")
-            .join("procnet.skel.rs");
+        PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR must be set")).join("procnet.skel.rs");
 
     SkeletonBuilder::new()
         .source(SRC)

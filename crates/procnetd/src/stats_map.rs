@@ -6,7 +6,7 @@ use procnet_core::stats::StatsMap;
 pub struct MapMutWrapper<'a>(&'a MapMut<'a>);
 
 impl<'a> MapMutWrapper<'a> {
-    pub fn new(map: &'a MapMut) -> Self {
+    pub const fn new(map: &'a MapMut) -> Self {
         MapMutWrapper(map)
     }
 }

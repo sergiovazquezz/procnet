@@ -1,6 +1,6 @@
 use std::{io::BufReader, sync::mpsc, thread, time::Duration};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 use procnet_core::{
     ipc::{self, Message, SnapshotData},
     stats::StatsRow,
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    return Err(anyhow!("The daemon is not responding"));
+                    bail!("The daemon is not responding");
                 }
             }
         }

@@ -48,8 +48,8 @@ pub fn render(frame: &mut Frame, tick: u64, rows: &[StatsRow], state: &TuiState)
         Pane::Filter => render_filter_prompt(frame, layout[2], state),
         Pane::Help => render_help(frame),
         Pane::Unit => render_unit_picker(frame, state),
-        _ => (),
-    };
+        Pane::Command => {}
+    }
 }
 
 fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], state: &TuiState) {
@@ -244,7 +244,7 @@ fn render_filter_prompt(frame: &mut Frame, area: Rect, state: &TuiState) {
 
 fn render_unit_picker(frame: &mut Frame, state: &TuiState) {
     let area = frame.area();
-    let height = (Unit::ALL.len() as u16) + 4;
+    let height = u16::try_from(Unit::ALL.len()).unwrap_or(6) + 4;
     let popup = centered_fixed(area, 22, height);
 
     frame.render_widget(Clear, popup);
