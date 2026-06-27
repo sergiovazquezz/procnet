@@ -24,10 +24,14 @@ fn main() -> Result<()> {
         let mut reader = BufReader::new(stream);
 
         loop {
-            while let Ok(Message::Snapshot(s)) = ipc::read_msg(&mut reader) {
-                if snap_tx.send(s).is_err() {
-                    break;
+            match ipc::read_msg(&mut reader) {
+                Ok(Message::Snapshot(s)) => {
+                    if snap_tx.send(s).is_err() {
+                        break;
+                    }
                 }
+                Ok(Message::Error(_)) => {}
+                Err(_) => break,
             }
         }
     });

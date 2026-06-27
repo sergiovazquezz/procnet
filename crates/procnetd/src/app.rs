@@ -2,14 +2,15 @@ use std::{
     os::unix::net::UnixStream,
     sync::{
         Arc, Mutex,
-        mpsc::{self, TryRecvError},
+        mpsc::{self, RecvTimeoutError},
     },
-    thread::{self, sleep},
+    thread,
     time::Duration,
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 use libbpf_rs::MapMut;
+
 use procnet_core::{
     ipc::{Message, SnapshotData},
     stats::{StatsCollector, StatsRow},
@@ -23,7 +24,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
     let stream_list = Arc::new(Mutex::new(Vec::<UnixStream>::with_capacity(2)));
     let list_for_server = Arc::clone(&stream_list);
 
-    thread::spawn(move || {
+    let join_handle = thread::spawn(move || {
         server::run_listener(list_for_server, tx);
     });
 
@@ -52,14 +53,15 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
 
         server::update_streams(&stream_list, &message)?;
 
-        match rx.try_recv() {
-            Ok(e) => return Err(anyhow!("Listener: {}", e)),
-            Err(TryRecvError::Disconnected) => return Err(anyhow!("Listener thread exited")),
-            Err(TryRecvError::Empty) => {}
+        match rx.recv_timeout(refresh_interval) {
+            Ok(e) => bail!("Listener: {}", e),
+            Err(RecvTimeoutError::Disconnected) => match join_handle.join() {
+                Ok(()) => bail!("Listener thread exited"),
+                Err(_) => bail!("Listener thread panicked"),
+            },
+            Err(RecvTimeoutError::Timeout) => {}
         }
 
         tick = tick.wrapping_add(1);
-
-        sleep(refresh_interval);
     }
 }
