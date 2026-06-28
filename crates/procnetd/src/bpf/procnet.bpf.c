@@ -121,7 +121,7 @@ int procnet_tcp_cleanup_rbuf(struct pt_regs* ctx)
     return account_bytes(0, (__u64)size);
 }
 
-SEC("tracepoint/sched/sched_process_exit")
+SEC("raw_tp/sched_process_exit")
 int procnet_sched_process_exit(void* ctx)
 {
     __u64 pid_tgid = bpf_get_current_pid_tgid();

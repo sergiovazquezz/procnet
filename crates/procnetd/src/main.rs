@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
 use log::LevelFilter;
 use log4rs::{
@@ -30,7 +30,7 @@ mod server;
 mod stats_map;
 
 fn main() -> Result<()> {
-    bump_memlock_rlimit()?;
+    bump_memlock_rlimit();
 
     let skel_builder = ProcnetSkelBuilder::default();
 
@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     app::run(stats_map, events_map)
 }
 
-fn bump_memlock_rlimit() -> Result<()> {
+fn bump_memlock_rlimit() {
     let limit = 128 * 1024 * 1024;
     let rlimit = libc::rlimit {
         rlim_cur: limit,
@@ -65,8 +65,10 @@ fn bump_memlock_rlimit() -> Result<()> {
 
     let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &raw const rlimit) };
     if ret != 0 {
-        return Err(std::io::Error::last_os_error()).context("failed to increase RLIMIT_MEMLOCK");
+        let err = std::io::Error::last_os_error();
+        eprintln!(
+            "warning: failed to increase RLIMIT_MEMLOCK: {err} \
+             (on kernel >= 5.11 with CAP_BPF this is harmless)"
+        );
     }
-
-    Ok(())
 }
