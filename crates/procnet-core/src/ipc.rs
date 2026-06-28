@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::stats::StatsRow;
 
-pub const DEFAULT_SOCKET_PATH: &str = "/run/procnetd.sock";
+pub const DEFAULT_SOCKET_PATH: &str = "/tmp/procnetd.sock";
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SnapshotData {
