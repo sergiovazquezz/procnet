@@ -1352,6 +1352,7 @@ dependencies = [
  "log",
  "log4rs",
  "procnet-core",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

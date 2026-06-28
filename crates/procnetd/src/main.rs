@@ -25,6 +25,7 @@ mod procnet {
 use procnet::ProcnetSkelBuilder;
 
 mod app;
+mod errors;
 mod events;
 mod server;
 mod stats_map;

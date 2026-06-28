@@ -16,10 +16,10 @@ use procnet_core::{
     stats::{StatsCollector, StatsRow},
 };
 
-use crate::{events::EventReader, server, stats_map::MapMutWrapper};
+use crate::{errors::ListenerError, events::EventReader, server, stats_map::MapMutWrapper};
 
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
-    let (tx, rx) = mpsc::channel::<String>();
+    let (tx, rx) = mpsc::channel::<ListenerError>();
 
     let stream_list = Arc::new(Mutex::new(Vec::<UnixStream>::with_capacity(2)));
     let list_for_server = Arc::clone(&stream_list);
@@ -54,7 +54,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<()> {
         server::update_streams(&stream_list, &message)?;
 
         match rx.recv_timeout(refresh_interval) {
-            Ok(e) => bail!("Listener: {}", e),
+            Ok(e) => bail!("{e}"),
             Err(RecvTimeoutError::Disconnected) => match join_handle.join() {
                 Ok(()) => bail!("Listener thread exited"),
                 Err(_) => bail!("Listener thread panicked"),
