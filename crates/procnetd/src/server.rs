@@ -1,9 +1,5 @@
 use std::{
-    fs::set_permissions,
-    os::unix::{
-        fs::PermissionsExt,
-        net::{UnixListener, UnixStream},
-    },
+    os::unix::net::{UnixListener, UnixStream},
     sync::{Arc, Mutex, mpsc::Sender},
 };
 
@@ -15,15 +11,7 @@ pub fn run_listener(stream_list: Arc<Mutex<Vec<UnixStream>>>, tx: Sender<String>
     let _ = std::fs::remove_file(DEFAULT_SOCKET_PATH);
 
     let listener = match UnixListener::bind(DEFAULT_SOCKET_PATH) {
-        Ok(l) => {
-            if let Err(e) =
-                set_permissions(DEFAULT_SOCKET_PATH, std::fs::Permissions::from_mode(0o666))
-            {
-                let _ = tx.send(format!("chmod {}: {}", DEFAULT_SOCKET_PATH, e));
-                return;
-            }
-            l
-        }
+        Ok(l) => l,
         Err(e) => {
             let _ = tx.send(format!("bind {}: {}", DEFAULT_SOCKET_PATH, e));
             return;
