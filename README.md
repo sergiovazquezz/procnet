@@ -10,13 +10,18 @@ running root shell.
 
 ```sh
 nix develop
+
 make install-caps   # one-time sudo; grants cap_bpf,cap_perfmon,cap_sys_resource
 make run-daemon     # run as your normal user
 make run-client     # run as your normal user
 ```
 
-The daemon needs a kernel with BTF available (kernel >= 5.8). Profiling targets
-(`stats`, `record`, `flamegraph`, `heaptrack`, `run-profile`,
-`run-daemon-profile`) still require `sudo` because they launch an uncapped
-profiling build; this keeps `heaptrack` working (it relies on `LD_PRELOAD`).
+Requirements:
 
+- Linux kernel >= 5.8 with BTF available
+- `libbpf` >= 1.0 (raw tracepoint auto-attach)
+- `/proc/sys/kernel/perf_event_paranoid` <= 2 (the default on most distros)
+
+Profiling targets (`stats`, `record`, `flamegraph`, `heaptrack`, `run-profile`,
+`run-daemon-profile`) still require `sudo` because they launch profiling build
+with no caps.
