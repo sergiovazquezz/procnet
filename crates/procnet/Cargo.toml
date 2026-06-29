@@ -11,3 +11,4 @@ workspace = true
 anyhow = { workspace = true }
 procnet-core = { path = "../procnet-core" }
 ratatui = "0.30.0"
+thiserror = { workspace = true }
