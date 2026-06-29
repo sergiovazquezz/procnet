@@ -5,9 +5,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ClientError {
-    #[error("Failed to connect to socket")]
+    #[error("Ipc error: {0}")]
     Ipc(#[from] ConnectError),
-    #[error("Failed to draw or handle TUI")]
+    #[error("Tui error: {0}")]
     Tui(#[from] TuiError),
     #[error("The daemon is not responding")]
     DaemonHangup,
