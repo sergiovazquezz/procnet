@@ -40,9 +40,7 @@ fn main() -> Result<(), ClientError> {
                         return;
                     }
                 }
-                Err(_) => {
-                    return;
-                }
+                Err(_) => return,
             }
         }
     });
