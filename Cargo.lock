@@ -1326,7 +1326,6 @@ dependencies = [
 name = "procnet"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "procnet-core",
  "ratatui",
  "thiserror 2.0.18",
@@ -1336,7 +1335,6 @@ dependencies = [
 name = "procnet-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
