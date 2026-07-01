@@ -13,8 +13,10 @@ pub struct ConnectError(#[from] std::io::Error);
 pub enum MsgSendError {
     #[error("Io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Invalid message: {0}")]
-    Serialize(#[from] serde_json::Error),
+    #[error("Encode: {0}")]
+    Encode(#[from] bincode::Error),
+    #[error("Serialized payload exceeds the u32 length-header limit")]
+    Oversized,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +25,6 @@ pub enum MsgReadError {
     Eof,
     #[error("Io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Invalid message: {0}")]
-    Parse(#[from] serde_json::Error),
+    #[error("Decode: {0}")]
+    Decode(#[from] bincode::Error),
 }

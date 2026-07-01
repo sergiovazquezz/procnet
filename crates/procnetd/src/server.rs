@@ -1,9 +1,10 @@
 use std::{
+    io::Write,
     os::unix::net::{UnixListener, UnixStream},
     sync::Mutex,
 };
 
-use procnet_core::ipc::{self, DEFAULT_SOCKET_PATH, SnapshotData};
+use procnet_core::ipc::DEFAULT_SOCKET_PATH;
 
 use crate::errors::{ListenerError, UpdateError};
 
@@ -32,12 +33,12 @@ pub fn run_listener(stream_list: &Mutex<Vec<UnixStream>>) -> Result<!, ListenerE
 
 pub fn update_streams(
     stream_list: &Mutex<Vec<UnixStream>>,
-    msg: &SnapshotData,
+    bytes: &[u8],
 ) -> Result<(), UpdateError> {
     stream_list
         .lock()
         .map_err(|_| UpdateError)?
-        .retain_mut(|stream| ipc::send_msg(stream, msg).is_ok());
+        .retain_mut(|stream| stream.write_all(bytes).is_ok());
 
     Ok(())
 }

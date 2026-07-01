@@ -1,6 +1,6 @@
 use std::io;
 
-use procnet_core::ipc::DEFAULT_SOCKET_PATH;
+use procnet_core::{errors::MsgSendError, ipc::DEFAULT_SOCKET_PATH};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -11,6 +11,8 @@ pub enum DaemonError {
     ListenerError(#[from] ListenerError),
     #[error("A stream update error happened: {0}")]
     UpdateError(#[from] UpdateError),
+    #[error("Failed to serialize snapshot for clients: {0}")]
+    Serialize(#[from] MsgSendError),
     #[error("Listener thread exited unexpectedly (likely panic)")]
     ThreadPanic,
 }

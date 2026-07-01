@@ -7,7 +7,7 @@ use std::{
 
 use libbpf_rs::MapMut;
 use procnet_core::{
-    ipc::SnapshotData,
+    ipc::{self, SnapshotRef},
     stats::{StatsCollector, StatsRow},
 };
 
@@ -30,6 +30,8 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
     let map_wrapper = MapMutWrapper::new(stats_map);
 
+    let mut buf = Vec::<u8>::with_capacity(8 * 1024);
+
     loop {
         for event in events.drain_available()? {
             stats.apply_event(event);
@@ -37,12 +39,10 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
         stats.collect_rows(&map_wrapper, &mut rows);
 
-        let message = SnapshotData {
-            tick,
-            rows: rows.clone(),
-        };
+        let snapshot = SnapshotRef { tick, rows: &rows };
+        ipc::write_msg(&mut buf, &snapshot)?;
 
-        server::update_streams(&stream_list, &message)?;
+        server::update_streams(&stream_list, &buf)?;
 
         thread::sleep(refresh_interval);
 
