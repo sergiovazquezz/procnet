@@ -3,7 +3,7 @@ use std::{
     sync::Mutex,
 };
 
-use procnet_core::ipc::{self, DEFAULT_SOCKET_PATH, Message};
+use procnet_core::ipc::{self, DEFAULT_SOCKET_PATH, SnapshotData};
 
 use crate::errors::{ListenerError, UpdateError};
 
@@ -32,7 +32,7 @@ pub fn run_listener(stream_list: &Mutex<Vec<UnixStream>>) -> Result<!, ListenerE
 
 pub fn update_streams(
     stream_list: &Mutex<Vec<UnixStream>>,
-    msg: &Message,
+    msg: &SnapshotData,
 ) -> Result<(), UpdateError> {
     stream_list
         .lock()

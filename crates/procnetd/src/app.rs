@@ -7,7 +7,7 @@ use std::{
 
 use libbpf_rs::MapMut;
 use procnet_core::{
-    ipc::{Message, SnapshotData},
+    ipc::SnapshotData,
     stats::{StatsCollector, StatsRow},
 };
 
@@ -37,10 +37,10 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
         stats.collect_rows(&map_wrapper, &mut rows);
 
-        let message = Message::Snapshot(SnapshotData {
+        let message = SnapshotData {
             tick,
             rows: rows.clone(),
-        });
+        };
 
         server::update_streams(&stream_list, &message)?;
 

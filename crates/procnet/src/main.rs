@@ -6,7 +6,7 @@ use std::{
 };
 
 use procnet_core::{
-    ipc::{self, Message, SnapshotData},
+    ipc::{self, SnapshotData},
     stats::StatsRow,
 };
 
@@ -34,8 +34,7 @@ fn main() -> Result<(), ClientError> {
 
         loop {
             match ipc::read_msg(&mut reader) {
-                Ok(Message::Error(_)) => {}
-                Ok(Message::Snapshot(s)) => {
+                Ok(s) => {
                     if snap_tx.send(s).is_err() {
                         return;
                     }
