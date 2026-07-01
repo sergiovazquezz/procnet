@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::events::ProcEvent;
+use crate::events::ProcStartEvent;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -19,12 +19,11 @@ pub trait StatsMap {
 struct ProcInfo {
     pid: u32,
     name: String,
-    last_sent_cum: u64,
-    last_recv_cum: u64,
-    stale_counter: u8,
+    sent_cum: u64,
+    recv_cum: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StatsRow {
     pub pid: u32,
     pub name: String,
@@ -64,24 +63,20 @@ impl StatsCollector {
         }
     }
 
-    pub fn apply_event(&mut self, event: ProcEvent) {
-        match event {
-            ProcEvent::Start { pid, mut name } => {
-                name.make_ascii_lowercase();
+    pub fn apply_event(&mut self, mut event: ProcStartEvent) {
+        event.name.make_ascii_lowercase();
 
-                self.procs.push(ProcInfo {
-                    pid,
-                    name,
-                    last_recv_cum: 0,
-                    last_sent_cum: 0,
-                    stale_counter: 0,
-                });
-            }
-            ProcEvent::Exit(pid) => {
-                if let Some(idx) = self.procs.iter().position(|x| x.pid == pid) {
-                    self.procs.swap_remove(idx);
-                }
-            }
+        if let Some(p) = self.procs.iter_mut().find(|p| p.pid == event.pid) {
+            p.name = event.name;
+            p.sent_cum = 0;
+            p.recv_cum = 0;
+        } else {
+            self.procs.push(ProcInfo {
+                pid: event.pid,
+                name: event.name,
+                sent_cum: 0,
+                recv_cum: 0,
+            });
         }
     }
 
@@ -89,18 +84,12 @@ impl StatsCollector {
         out.clear();
 
         self.procs.retain_mut(|proc_info| {
-            if proc_info.stale_counter >= 2 {
-                return false;
-            }
-
             if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
-                let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.last_sent_cum);
-                let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.last_recv_cum);
+                let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.sent_cum);
+                let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.recv_cum);
 
-                proc_info.last_sent_cum = new_stats.sent_bytes;
-                proc_info.last_recv_cum = new_stats.recv_bytes;
-
-                proc_info.stale_counter = 0;
+                proc_info.sent_cum = new_stats.sent_bytes;
+                proc_info.recv_cum = new_stats.recv_bytes;
 
                 out.push(StatsRow::new(
                     proc_info.pid,
@@ -108,11 +97,11 @@ impl StatsCollector {
                     sent_delta,
                     recv_delta,
                 ));
-            } else {
-                proc_info.stale_counter += 1;
-            }
 
-            true
+                true
+            } else {
+                false
+            }
         });
     }
 }
@@ -191,6 +180,10 @@ mod tests {
 
             map
         }
+
+        fn remove(&mut self, pid: u32) {
+            self.data.remove(pid.to_ne_bytes().as_slice());
+        }
     }
 
     fn proc_stats_bytes(sent: u64, recv: u64) -> Vec<u8> {
@@ -211,7 +204,7 @@ mod tests {
     #[test]
     fn apply_event_pushes_and_is_lowercase() {
         let mut stats = StatsCollector::default();
-        stats.apply_event(ProcEvent::Start {
+        stats.apply_event(ProcStartEvent {
             pid: 10,
             name: "GOOGLE".into(),
         });
@@ -230,26 +223,64 @@ mod tests {
     }
 
     #[test]
-    fn apply_event_removes_only_present() {
-        let start_event = ProcEvent::Start {
+    fn apply_event_resets_existing_pid() {
+        let mut stats = StatsCollector::default();
+        stats.apply_event(ProcStartEvent {
+            pid: 10,
+            name: "first".into(),
+        });
+        stats.apply_event(ProcStartEvent {
+            pid: 10,
+            name: "second".into(),
+        });
+
+        assert_eq!(stats.procs.len(), 1);
+        assert_eq!(stats.procs[0].name, "second");
+        assert_eq!(stats.procs[0].sent_cum, 0);
+        assert_eq!(stats.procs[0].recv_cum, 0);
+    }
+
+    #[test]
+    fn collect_rows_removes_exited_proc() {
+        let event = ProcStartEvent {
             pid: 140,
             name: "librewolf".into(),
         };
 
         let mut stats = StatsCollector::default();
-        stats.apply_event(start_event);
+        stats.apply_event(event);
 
-        stats.apply_event(ProcEvent::Exit(10));
         assert_eq!(stats.procs.len(), 1);
 
-        stats.apply_event(ProcEvent::Exit(140));
+        let mut map = FakeStatsMap::new(140, 10, 20);
+        let mut rows = Vec::<StatsRow>::with_capacity(1);
+
+        stats.collect_rows(&map, &mut rows);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0],
+            StatsRow {
+                pid: 140,
+                name: "librewolf".into(),
+                sent_bytes: 10,
+                recv_bytes: 20,
+                total_bytes: 30
+            }
+        );
+
+        map.remove(140);
+
+        stats.collect_rows(&map, &mut rows);
+
+        assert!(rows.is_empty());
         assert!(stats.procs.is_empty());
     }
 
     #[test]
     fn collect_rows_computes_delta() {
         let mut stats = StatsCollector::default();
-        stats.apply_event(ProcEvent::Start {
+        stats.apply_event(ProcStartEvent {
             pid: 7,
             name: "vim".into(),
         });
@@ -275,28 +306,6 @@ mod tests {
         stats.collect_rows(&map, &mut rows);
         assert_eq!(rows[0].sent_bytes, sent3.saturating_sub(sent2));
         assert_eq!(rows[0].recv_bytes, recv3.saturating_sub(recv2));
-    }
-
-    #[test]
-    fn collect_rows_evicts_process_missing_for_two_ticks() {
-        let mut stats = StatsCollector::default();
-        stats.apply_event(ProcEvent::Start {
-            pid: 7,
-            name: "vim".into(),
-        });
-        assert_eq!(stats.procs.len(), 1);
-
-        let map = FakeStatsMap::default();
-        let mut rows: Vec<StatsRow> = Vec::new();
-
-        stats.collect_rows(&map, &mut rows);
-        assert_eq!(stats.procs.len(), 1);
-
-        stats.collect_rows(&map, &mut rows);
-        assert_eq!(stats.procs.len(), 1);
-
-        stats.collect_rows(&map, &mut rows);
-        assert!(stats.procs.is_empty());
     }
 
     #[test]

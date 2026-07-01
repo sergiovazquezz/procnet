@@ -5,13 +5,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
-enum EventType {
-    EVENT_START = 1,
-    EVENT_EXIT,
-};
-
-struct ProcEvent {
-    enum EventType event_type;
+struct ProcStartEvent {
     __u32 tgid;
     __u8 comm[16];
 };
@@ -35,29 +29,14 @@ struct {
 
 static __always_inline int emit_start_event(__u32 tgid, __u8 comm[16])
 {
-    struct ProcEvent* event = bpf_ringbuf_reserve(&EVENTS, sizeof(*event), 0);
+    struct ProcStartEvent* event =
+        bpf_ringbuf_reserve(&EVENTS, sizeof(*event), 0);
 
     if (!event)
         return 0;
 
-    event->event_type = EVENT_START;
     event->tgid = tgid;
     __builtin_memcpy(event->comm, comm, sizeof(event->comm));
-
-    bpf_ringbuf_submit(event, 0);
-    return 0;
-}
-
-static __always_inline int emit_exit_event(__u32 tgid)
-{
-    struct ProcEvent* event = bpf_ringbuf_reserve(&EVENTS, sizeof(*event), 0);
-
-    if (!event)
-        return 0;
-
-    event->event_type = EVENT_EXIT;
-    event->tgid = tgid;
-    __builtin_memset(event->comm, 0, sizeof(event->comm));
 
     bpf_ringbuf_submit(event, 0);
     return 0;
@@ -133,8 +112,7 @@ int procnet_sched_process_exit(void* ctx)
     if (pid != tgid)
         return 0;
 
-    if (bpf_map_delete_elem(&STATS, &tgid) == 0)
-        emit_exit_event(tgid);
+    bpf_map_delete_elem(&STATS, &tgid);
 
     return 0;
 }

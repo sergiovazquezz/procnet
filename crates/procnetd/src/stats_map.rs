@@ -12,7 +12,7 @@ impl<'a> MapMutWrapper<'a> {
 }
 
 impl StatsMap for MapMutWrapper<'_> {
-    #[inline(always)]
+    #[inline]
     fn lookup_percpu(&self, key: &[u8]) -> Option<Vec<Vec<u8>>> {
         self.0.lookup_percpu(key, MapFlags::ANY).ok().flatten()
     }

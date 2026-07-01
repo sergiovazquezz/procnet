@@ -1,30 +1,26 @@
 use std::{cell::RefCell, fs, rc::Rc};
 
 use libbpf_rs::{MapMut, RingBuffer, RingBufferBuilder};
-use procnet_core::events::ProcEvent;
+use procnet_core::events::ProcStartEvent;
 
 use crate::errors::EventError;
 
-pub const EVENT_START: u32 = 1;
-pub const EVENT_EXIT: u32 = 2;
-
-/// The `ProcEvent` struct from the bpf.c code, since it isn't generated
+/// The `ProcStartEvent` struct from the bpf.c code, since it isn't generated
 /// automatically.
 #[repr(C)]
-pub struct ProcEventBpf {
-    pub event_type: u32,
+pub struct ProcStartEventBpf {
     pub pid: u32,
     pub comm: [u8; 16],
 }
 
 pub struct EventReader<'a> {
     ringbuf: RingBuffer<'a>,
-    queue: Rc<RefCell<Vec<ProcEvent>>>,
+    queue: Rc<RefCell<Vec<ProcStartEvent>>>,
 }
 
 impl<'a> EventReader<'a> {
     pub fn new(events_map: &'a MapMut) -> Result<Self, EventError> {
-        let queue = Rc::new(RefCell::new(Vec::<ProcEvent>::new()));
+        let queue = Rc::new(RefCell::new(Vec::<ProcStartEvent>::new()));
         let callback_queue = Rc::clone(&queue);
 
         let mut builder = RingBufferBuilder::new();
@@ -45,28 +41,22 @@ impl<'a> EventReader<'a> {
     }
 
     /// Consume all pending events, then collect all the pids from the queue.
-    pub fn drain_available(&self) -> Result<Vec<ProcEvent>, EventError> {
+    pub fn drain_available(&self) -> Result<Vec<ProcStartEvent>, EventError> {
         self.ringbuf.consume().map_err(EventError::Consume)?;
 
         Ok(self.queue.borrow_mut().drain(..).collect())
     }
 }
 
-pub fn parse_proc_event(data: &[u8]) -> Option<ProcEvent> {
-    if data.len() != size_of::<ProcEventBpf>() {
+pub fn parse_proc_event(data: &[u8]) -> Option<ProcStartEvent> {
+    if data.len() != size_of::<ProcStartEventBpf>() {
         return None;
     }
 
-    let raw = unsafe { data.as_ptr().cast::<ProcEventBpf>().read_unaligned() };
+    let raw = unsafe { data.as_ptr().cast::<ProcStartEventBpf>().read_unaligned() };
 
-    match raw.event_type {
-        EVENT_START => {
-            let name = get_proc_name(raw.pid).unwrap_or_else(|| comm_to_string(&raw.comm));
-            Some(ProcEvent::Start { pid: raw.pid, name })
-        }
-        EVENT_EXIT => Some(ProcEvent::Exit(raw.pid)),
-        _ => None,
-    }
+    let name = get_proc_name(raw.pid).unwrap_or_else(|| comm_to_string(&raw.comm));
+    Some(ProcStartEvent { pid: raw.pid, name })
 }
 
 fn get_proc_name(pid: u32) -> Option<String> {

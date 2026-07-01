@@ -1,5 +1,5 @@
 #[derive(Clone)]
-pub enum ProcEvent {
-    Start { pid: u32, name: String },
-    Exit(u32),
+pub struct ProcStartEvent {
+    pub pid: u32,
+    pub name: String,
 }

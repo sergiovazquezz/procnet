@@ -26,7 +26,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
     let events = EventReader::new(events_map)?;
 
-    let mut rows: Vec<StatsRow> = Vec::with_capacity(20);
+    let mut rows = Vec::<StatsRow>::with_capacity(20);
 
     let map_wrapper = MapMutWrapper::new(stats_map);
 
