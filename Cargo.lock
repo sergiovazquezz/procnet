@@ -1326,18 +1326,18 @@ dependencies = [
 name = "procnet"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "procnet-core",
  "ratatui",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "procnet-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1351,6 +1351,7 @@ dependencies = [
  "log",
  "log4rs",
  "procnet-core",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

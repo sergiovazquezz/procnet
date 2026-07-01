@@ -1,6 +1,7 @@
+#![feature(never_type)]
+
 use std::mem::MaybeUninit;
 
-use anyhow::Result;
 use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
 use log::LevelFilter;
 use log4rs::{
@@ -25,11 +26,12 @@ mod procnet {
 use procnet::ProcnetSkelBuilder;
 
 mod app;
+mod errors;
 mod events;
 mod server;
 mod stats_map;
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     bump_memlock_rlimit();
 
     let skel_builder = ProcnetSkelBuilder::default();
@@ -53,7 +55,9 @@ fn main() -> Result<()> {
 
     log4rs::init_config(config)?;
 
-    app::run(stats_map, events_map)
+    app::run(stats_map, events_map)?;
+
+    Ok(())
 }
 
 fn bump_memlock_rlimit() {

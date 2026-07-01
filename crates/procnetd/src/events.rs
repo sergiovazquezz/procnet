@@ -1,8 +1,9 @@
 use std::{cell::RefCell, fs, rc::Rc};
 
-use anyhow::Result;
 use libbpf_rs::{MapMut, RingBuffer, RingBufferBuilder};
 use procnet_core::events::ProcEvent;
+
+use crate::errors::EventError;
 
 pub const EVENT_START: u32 = 1;
 pub const EVENT_EXIT: u32 = 2;
@@ -22,28 +23,30 @@ pub struct EventReader<'a> {
 }
 
 impl<'a> EventReader<'a> {
-    pub fn new(events_map: &'a MapMut) -> Result<Self> {
+    pub fn new(events_map: &'a MapMut) -> Result<Self, EventError> {
         let queue = Rc::new(RefCell::new(Vec::<ProcEvent>::new()));
         let callback_queue = Rc::clone(&queue);
 
         let mut builder = RingBufferBuilder::new();
 
-        builder.add(events_map, move |data: &[u8]| {
-            if let Some(event) = parse_proc_event(data) {
-                callback_queue.borrow_mut().push(event);
-            }
+        builder
+            .add(events_map, move |data: &[u8]| {
+                if let Some(event) = parse_proc_event(data) {
+                    callback_queue.borrow_mut().push(event);
+                }
 
-            0i32
-        })?;
+                0i32
+            })
+            .map_err(EventError::Build)?;
 
-        let ringbuf = builder.build()?;
+        let ringbuf = builder.build().map_err(EventError::Build)?;
 
         Ok(EventReader { ringbuf, queue })
     }
 
     /// Consume all pending events, then collect all the pids from the queue.
-    pub fn drain_available(&self) -> Result<Vec<ProcEvent>> {
-        self.ringbuf.consume()?;
+    pub fn drain_available(&self) -> Result<Vec<ProcEvent>, EventError> {
+        self.ringbuf.consume().map_err(EventError::Consume)?;
 
         Ok(self.queue.borrow_mut().drain(..).collect())
     }

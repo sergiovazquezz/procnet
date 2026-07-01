@@ -14,6 +14,7 @@ log4rs = "1.4.0"
 libc = "0.2.183"
 libbpf-rs = "0.26.0"
 procnet-core = { path = "../procnet-core" }
+thiserror = { workspace = true }
 
 [build-dependencies]
 libbpf-cargo = "0.26.0"

@@ -1,37 +1,46 @@
-use std::{io::BufReader, sync::mpsc, thread, time::Duration};
+use std::{
+    io::BufReader,
+    sync::mpsc::{self, TryRecvError},
+    thread,
+    time::Duration,
+};
 
-use anyhow::{Result, bail};
 use procnet_core::{
     ipc::{self, Message, SnapshotData},
     stats::StatsRow,
 };
 
-use crate::tui::{Action, Tui};
+use crate::{
+    errors::ClientError,
+    tui::{Action, Tui},
+};
 
+mod errors;
 mod tui;
 
-fn main() -> Result<()> {
+fn main() -> Result<(), ClientError> {
     let (snap_tx, snap_rx) = mpsc::channel::<SnapshotData>();
 
-    let mut rows: Vec<StatsRow> = Vec::with_capacity(20);
+    let mut rows = Vec::<StatsRow>::with_capacity(20);
+
     let mut tick: u64 = 0;
 
     let stream = ipc::connect_to_socket()?;
 
-    let mut tui = Tui::new()?;
+    let mut tui = Tui::new();
 
-    thread::spawn(move || {
+    let join_handle = thread::spawn(move || {
         let mut reader = BufReader::new(stream);
 
         loop {
             match ipc::read_msg(&mut reader) {
+                Ok(Message::Error(_)) => {}
                 Ok(Message::Snapshot(s)) => {
                     if snap_tx.send(s).is_err() {
-                        break;
+                        return;
                     }
                 }
-                Ok(Message::Error(_)) => {}
-                Err(_) => break,
+                Err(_) => return,
             }
         }
     });
@@ -43,10 +52,11 @@ fn main() -> Result<()> {
                     tick = snap.tick;
                     rows = snap.rows;
                 }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    bail!("The daemon is not responding");
-                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => match join_handle.join() {
+                    Ok(()) => return Err(ClientError::DaemonHangup),
+                    Err(_) => return Err(ClientError::ThreadPanic),
+                },
             }
         }
 
