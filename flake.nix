@@ -20,16 +20,15 @@
         buildDeps = with pkgs; [
           bpftools
           clang
-          clang-tools
           elfutils
           libbpf
-          linuxHeaders
           pkg-config
           rustup
           zlib
         ];
 
         devDeps = with pkgs; [
+          clang-tools
           gnumake
           rust-analyzer
         ];
@@ -40,10 +39,8 @@
 
           CPATH = pkgs.lib.makeSearchPathOutput "dev" "include" [
             pkgs.libbpf
-            pkgs.linuxHeaders
           ];
         };
       }
     );
 }
-

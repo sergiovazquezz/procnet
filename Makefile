@@ -33,7 +33,7 @@ run-daemon-profile: build-profile clear-logs
 	sudo $(DAEMON_PROFILE)
 
 run-client-profile: build-profile
-	$(CLIENT_PROFILE)
+	sudo $(CLIENT_PROFILE)
 
 stats: build-profile clear-logs
 	sudo perf stat -d $(DAEMON_PROFILE)
