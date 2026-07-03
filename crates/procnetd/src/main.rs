@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
 
     let file = FileAppender::builder()
         .encoder(Box::new(PatternEncoder::new("{d} - {m}{n}")))
-        .build("logs/app.log")?;
+        .build("/var/log/procnet.log")?;
 
     let config = Config::builder()
         .appender(Appender::builder().build("file", Box::new(file)))

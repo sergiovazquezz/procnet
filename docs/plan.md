@@ -32,10 +32,10 @@
 
 ## Features
 
+- Add systemd service.
+
 - Add udp with `udp_sendmsg`, `udp_recvmsg`, `udpv6_sendmsg` and
   `udpv6_recvmsg`.
-
-- Change default log file and add `--log-file`.
 
 - Use `log::error!()` for ebpf load.
 
@@ -50,7 +50,7 @@
 - Global: `--version`.
 
 - Daemon: `--socket`, `--interval`, `--stats-map-size`, `--events-size`,
-  `--allow-any`.
+  `--allow-any`, `--log-file`.
 
 - Client: `--socket`. `DEFAULT_SOCKET_PATH` becomes the default.
 
