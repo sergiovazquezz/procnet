@@ -13,7 +13,7 @@ use crate::{
 pub const DEFAULT_SOCKET_PATH: &str = "/tmp/procnetd.sock";
 
 /// Length of prefix used to frame each `bincode` message.
-const PREFIX_LEN: usize = 4;
+const PREFIX_LEN: usize = 2;
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SnapshotData {
@@ -34,14 +34,14 @@ pub fn connect_to_socket() -> Result<UnixStream, ConnectError> {
     Ok(stream)
 }
 
-/// The resulting `buf` is `[len: u32 LE][payload: bincode]`.
+/// The resulting `buf` is `[len: u16 LE][payload: bincode]`.
 pub fn write_msg(buf: &mut Vec<u8>, msg: &SnapshotRef<'_>) -> Result<(), MsgSendError> {
     buf.clear();
     buf.extend_from_slice(&[0u8; PREFIX_LEN]);
 
     bincode::serialize_into(&mut *buf, msg)?;
 
-    let payload_len = u32::try_from(buf.len() - PREFIX_LEN).map_err(|_| MsgSendError::Oversized)?;
+    let payload_len = u16::try_from(buf.len() - PREFIX_LEN).map_err(|_| MsgSendError::Oversized)?;
     buf[..PREFIX_LEN].copy_from_slice(&payload_len.to_le_bytes());
 
     Ok(())
@@ -51,7 +51,7 @@ pub fn read_msg<R: BufRead>(reader: &mut R) -> Result<SnapshotData, MsgReadError
     let mut prefix_buf = [0u8; PREFIX_LEN];
     read_exact_or_eof(reader, &mut prefix_buf)?;
 
-    let payload_len = u32::from_le_bytes(prefix_buf) as usize;
+    let payload_len = u16::from_le_bytes(prefix_buf) as usize;
     let mut payload_buf = vec![0u8; payload_len];
     read_exact_or_eof(reader, &mut payload_buf)?;
 
