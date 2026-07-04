@@ -3,10 +3,24 @@ use serde::{Deserialize, Serialize};
 use crate::events::ProcStartEvent;
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StatsBytes {
+    pub sent: u64,
+    pub recv: u64,
+}
+
+impl StatsBytes {
+    #[must_use]
+    pub const fn combined(&self) -> u64 {
+        self.sent.saturating_add(self.recv)
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Default, PartialEq)]
 struct ProcStats {
-    pub sent_bytes: u64,
-    pub recv_bytes: u64,
+    pub tcp: StatsBytes,
+    pub udp: StatsBytes,
 }
 
 /// Abstraction over a per-CPU BPF map lookup so the stats collector can be
@@ -19,29 +33,38 @@ pub trait StatsMap {
 struct ProcInfo {
     pid: u32,
     name: String,
-    sent_cum: u64,
-    recv_cum: u64,
+    tcp_cum: StatsBytes,
+    udp_cum: StatsBytes,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StatsRow {
     pub pid: u32,
     pub name: String,
-    pub sent_bytes: u64,
-    pub recv_bytes: u64,
-    pub total_bytes: u64,
+    pub tcp: StatsBytes,
+    pub udp: StatsBytes,
+    total: StatsBytes,
 }
 
+#[expect(clippy::missing_const_for_fn)]
 impl StatsRow {
     #[must_use]
-    pub const fn new(pid: u32, name: String, sent_bytes: u64, recv_bytes: u64) -> Self {
+    pub fn new(pid: u32, name: String, tcp: StatsBytes, udp: StatsBytes) -> Self {
         Self {
             pid,
             name,
-            sent_bytes,
-            recv_bytes,
-            total_bytes: sent_bytes.saturating_add(recv_bytes),
+            tcp,
+            udp,
+            total: StatsBytes {
+                sent: tcp.sent.saturating_add(udp.sent),
+                recv: tcp.recv.saturating_add(udp.recv),
+            },
         }
+    }
+
+    #[must_use]
+    pub fn total(&self) -> &StatsBytes {
+        &self.total
     }
 }
 
@@ -68,14 +91,14 @@ impl StatsCollector {
 
         if let Some(p) = self.procs.iter_mut().find(|p| p.pid == event.pid) {
             p.name = event.name;
-            p.sent_cum = 0;
-            p.recv_cum = 0;
+            p.tcp_cum = StatsBytes::default();
+            p.udp_cum = StatsBytes::default();
         } else {
             self.procs.push(ProcInfo {
                 pid: event.pid,
                 name: event.name,
-                sent_cum: 0,
-                recv_cum: 0,
+                tcp_cum: StatsBytes::default(),
+                udp_cum: StatsBytes::default(),
             });
         }
     }
@@ -85,17 +108,24 @@ impl StatsCollector {
 
         self.procs.retain_mut(|proc_info| {
             if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
-                let sent_delta = new_stats.sent_bytes.saturating_sub(proc_info.sent_cum);
-                let recv_delta = new_stats.recv_bytes.saturating_sub(proc_info.recv_cum);
+                let tcp_delta = StatsBytes {
+                    sent: new_stats.tcp.sent.saturating_sub(proc_info.tcp_cum.sent),
+                    recv: new_stats.tcp.recv.saturating_sub(proc_info.tcp_cum.recv),
+                };
 
-                proc_info.sent_cum = new_stats.sent_bytes;
-                proc_info.recv_cum = new_stats.recv_bytes;
+                let udp_delta = StatsBytes {
+                    sent: new_stats.udp.sent.saturating_sub(proc_info.udp_cum.sent),
+                    recv: new_stats.udp.recv.saturating_sub(proc_info.udp_cum.recv),
+                };
+
+                proc_info.tcp_cum = new_stats.tcp;
+                proc_info.udp_cum = new_stats.udp;
 
                 out.push(StatsRow::new(
                     proc_info.pid,
                     proc_info.name.clone(),
-                    sent_delta,
-                    recv_delta,
+                    tcp_delta,
+                    udp_delta,
                 ));
 
                 true
@@ -115,8 +145,10 @@ fn merge_values_for_pid(stats_map: &impl StatsMap, pid: u32) -> Option<ProcStats
 
     for value in per_cpu_values {
         if let Some(value) = proc_stats_from_bytes(&value) {
-            merged.recv_bytes = merged.recv_bytes.saturating_add(value.recv_bytes);
-            merged.sent_bytes = merged.sent_bytes.saturating_add(value.sent_bytes);
+            merged.tcp.sent = merged.tcp.sent.saturating_add(value.tcp.sent);
+            merged.tcp.recv = merged.tcp.recv.saturating_add(value.tcp.recv);
+            merged.udp.sent = merged.udp.sent.saturating_add(value.udp.sent);
+            merged.udp.recv = merged.udp.recv.saturating_add(value.udp.recv);
         }
     }
 
@@ -153,29 +185,32 @@ mod tests {
     }
 
     impl FakeStatsMap {
-        fn new(pid: u32, sent: u64, recv: u64) -> Self {
+        fn new(pid: u32, tcp: StatsBytes, udp: StatsBytes) -> Self {
             let mut map = Self {
                 data: HashMap::new(),
             };
 
-            map.data.insert(
-                pid.to_ne_bytes().to_vec(),
-                vec![proc_stats_bytes(sent, recv)],
-            );
+            map.data
+                .insert(pid.to_ne_bytes().to_vec(), vec![proc_stats_bytes(tcp, udp)]);
 
             map
         }
 
         /// Creates two vectors for a given `pid`, the second having `10` for
         /// sent and recv.
-        fn new_two_values(pid: u32, sent: u64, recv: u64) -> Self {
+        fn new_two_values(pid: u32, tcp: StatsBytes, udp: StatsBytes) -> Self {
             let mut map = Self {
                 data: HashMap::new(),
             };
 
+            let second_bytes = StatsBytes { sent: 10, recv: 10 };
+
             map.data.insert(
                 pid.to_ne_bytes().to_vec(),
-                vec![proc_stats_bytes(sent, recv), proc_stats_bytes(10, 10)],
+                vec![
+                    proc_stats_bytes(tcp, udp),
+                    proc_stats_bytes(second_bytes, second_bytes),
+                ],
             );
 
             map
@@ -186,19 +221,30 @@ mod tests {
         }
     }
 
-    fn proc_stats_bytes(sent: u64, recv: u64) -> Vec<u8> {
+    fn proc_stats_bytes(tcp: StatsBytes, udp: StatsBytes) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::with_capacity(size_of::<ProcStats>());
 
-        v.extend_from_slice(&sent.to_ne_bytes());
-        v.extend_from_slice(&recv.to_ne_bytes());
+        v.extend_from_slice(&tcp.sent.to_ne_bytes());
+        v.extend_from_slice(&tcp.recv.to_ne_bytes());
+        v.extend_from_slice(&udp.sent.to_ne_bytes());
+        v.extend_from_slice(&udp.recv.to_ne_bytes());
 
         v
     }
 
     #[test]
     fn stats_row_new_saturates_on_overflow() {
-        let row = StatsRow::new(130, "firefox".into(), u64::MAX, 10);
-        assert_eq!(row.total_bytes, u64::MAX);
+        let row = StatsRow::new(
+            130,
+            "firefox".into(),
+            StatsBytes {
+                sent: u64::MAX,
+                recv: 10,
+            },
+            StatsBytes { sent: 20, recv: 10 },
+        );
+        assert_eq!(row.total.sent, u64::MAX);
+        assert_eq!(row.total.recv, 10 + 10);
     }
 
     #[test]
@@ -211,8 +257,8 @@ mod tests {
 
         assert_eq!(stats.procs[0].name, "google".to_string());
 
-        let (sent, recv) = (100, 200);
-        let map = FakeStatsMap::new(10, sent, recv);
+        let bytes = StatsBytes::default();
+        let map = FakeStatsMap::new(10, bytes, bytes);
 
         let mut rows: Vec<StatsRow> = Vec::new();
 
@@ -236,8 +282,10 @@ mod tests {
 
         assert_eq!(stats.procs.len(), 1);
         assert_eq!(stats.procs[0].name, "second");
-        assert_eq!(stats.procs[0].sent_cum, 0);
-        assert_eq!(stats.procs[0].recv_cum, 0);
+
+        let zero_bytes = StatsBytes { sent: 0, recv: 0 };
+        assert_eq!(stats.procs[0].tcp_cum, zero_bytes);
+        assert_eq!(stats.procs[0].udp_cum, zero_bytes);
     }
 
     #[test]
@@ -252,7 +300,7 @@ mod tests {
 
         assert_eq!(stats.procs.len(), 1);
 
-        let mut map = FakeStatsMap::new(140, 10, 20);
+        let mut map = FakeStatsMap::new(140, StatsBytes::default(), StatsBytes::default());
         let mut rows = Vec::<StatsRow>::with_capacity(1);
 
         stats.collect_rows(&map, &mut rows);
@@ -260,13 +308,12 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(
             rows[0],
-            StatsRow {
-                pid: 140,
-                name: "librewolf".into(),
-                sent_bytes: 10,
-                recv_bytes: 20,
-                total_bytes: 30
-            }
+            StatsRow::new(
+                140,
+                "librewolf".into(),
+                StatsBytes::default(),
+                StatsBytes::default()
+            )
         );
 
         map.remove(140);
@@ -285,59 +332,95 @@ mod tests {
             name: "vim".into(),
         });
 
-        let (sent, recv) = (100, 200);
-        let map = FakeStatsMap::new(7, sent, recv);
+        let tcp_bytes = StatsBytes {
+            sent: 100,
+            recv: 200,
+        };
+        let udp_bytes = StatsBytes {
+            sent: 400,
+            recv: 1000,
+        };
+
+        let map = FakeStatsMap::new(7, tcp_bytes, udp_bytes);
         let mut rows: Vec<StatsRow> = Vec::new();
 
         stats.collect_rows(&map, &mut rows);
-        assert_eq!(rows[0].sent_bytes, sent);
-        assert_eq!(rows[0].recv_bytes, recv);
+        assert_eq!(rows[0].tcp, tcp_bytes);
+        assert_eq!(rows[0].udp, udp_bytes);
 
-        let (sent2, recv2) = (sent + 20, recv + 10);
-        let map = FakeStatsMap::new(7, sent2, recv2);
+        let tcp_bytes2 = StatsBytes {
+            sent: tcp_bytes.sent + 20,
+            recv: tcp_bytes.recv + 10,
+        };
+        let udp_bytes2 = StatsBytes {
+            sent: udp_bytes.sent + 20,
+            recv: udp_bytes.recv + 10,
+        };
+
+        let map = FakeStatsMap::new(7, tcp_bytes2, udp_bytes2);
+
+        let tcp_delta = StatsBytes {
+            sent: tcp_bytes2.sent.saturating_sub(tcp_bytes.sent),
+            recv: tcp_bytes2.recv.saturating_sub(tcp_bytes.recv),
+        };
+        let udp_delta = StatsBytes {
+            sent: udp_bytes2.sent.saturating_sub(udp_bytes.sent),
+            recv: udp_bytes2.recv.saturating_sub(udp_bytes.recv),
+        };
 
         stats.collect_rows(&map, &mut rows);
-        assert_eq!(rows[0].sent_bytes, sent2.saturating_sub(sent));
-        assert_eq!(rows[0].recv_bytes, recv2.saturating_sub(recv));
-
-        let (sent3, recv3) = (sent, recv + 50);
-        let map = FakeStatsMap::new(7, sent3, recv3);
-
-        stats.collect_rows(&map, &mut rows);
-        assert_eq!(rows[0].sent_bytes, sent3.saturating_sub(sent2));
-        assert_eq!(rows[0].recv_bytes, recv3.saturating_sub(recv2));
+        assert_eq!(rows[0].tcp, tcp_delta);
+        assert_eq!(rows[0].udp, udp_delta);
     }
 
     #[test]
     fn merge_values_for_pid_success() {
-        let map = FakeStatsMap::new_two_values(3, 50, 110);
+        let tcp_bytes = StatsBytes {
+            sent: 50,
+            recv: 110,
+        };
+        let udp_bytes = StatsBytes {
+            sent: 10,
+            recv: 500,
+        };
+
+        let map = FakeStatsMap::new_two_values(3, tcp_bytes, udp_bytes);
 
         let merged = merge_values_for_pid(&map, 3).unwrap();
 
         assert_eq!(
             merged,
             ProcStats {
-                sent_bytes: 50 + 10,
-                recv_bytes: 110 + 10
+                tcp: StatsBytes {
+                    sent: tcp_bytes.sent + 10,
+                    recv: tcp_bytes.recv + 10
+                },
+                udp: StatsBytes {
+                    sent: udp_bytes.sent + 10,
+                    recv: udp_bytes.recv + 10
+                },
             }
         );
     }
 
     #[test]
     fn proc_stats_from_bytes_valid_length() {
-        let mut bytes: Vec<u8> = Vec::with_capacity(size_of::<ProcStats>());
-        let (sent_bytes, recv_bytes) = (10u64, 20u64);
+        let mut raw: Vec<u8> = Vec::with_capacity(size_of::<ProcStats>());
+        let bytes = StatsBytes { sent: 10, recv: 20 };
 
-        bytes.extend_from_slice(&sent_bytes.to_ne_bytes());
-        bytes.extend_from_slice(&recv_bytes.to_ne_bytes());
+        // TCP and UDP
+        raw.extend_from_slice(&bytes.sent.to_ne_bytes());
+        raw.extend_from_slice(&bytes.recv.to_ne_bytes());
+        raw.extend_from_slice(&bytes.sent.to_ne_bytes());
+        raw.extend_from_slice(&bytes.recv.to_ne_bytes());
 
-        let result = proc_stats_from_bytes(&bytes).unwrap();
+        let result = proc_stats_from_bytes(&raw).unwrap();
 
         assert_eq!(
             result,
             ProcStats {
-                sent_bytes,
-                recv_bytes
+                tcp: bytes,
+                udp: bytes
             }
         );
 

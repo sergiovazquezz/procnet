@@ -75,16 +75,23 @@ fn read_exact_or_eof<R: Read>(reader: &mut R, dest: &mut [u8]) -> Result<(), Msg
 mod tests {
     use std::io::{BufReader, Cursor};
 
+    use crate::stats::StatsBytes;
+
     use super::*;
 
     fn sample_rows() -> Vec<StatsRow> {
-        vec![StatsRow {
-            pid: 130,
-            name: "firefox".to_string(),
-            sent_bytes: 1024,
-            recv_bytes: 2048,
-            total_bytes: 3072,
-        }]
+        vec![StatsRow::new(
+            130,
+            "firefox".to_string(),
+            StatsBytes {
+                sent: 512,
+                recv: 1024,
+            },
+            StatsBytes {
+                sent: 2048,
+                recv: 4096,
+            },
+        )]
     }
 
     #[test]

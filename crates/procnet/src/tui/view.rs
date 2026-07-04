@@ -19,9 +19,9 @@ pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
         let primary = match key {
             SortKey::Pid => a.pid.cmp(&b.pid),
             SortKey::Name => a.name.cmp(&b.name),
-            SortKey::Sent => a.sent_bytes.cmp(&b.sent_bytes),
-            SortKey::Recv => a.recv_bytes.cmp(&b.recv_bytes),
-            SortKey::Total => a.total_bytes.cmp(&b.total_bytes),
+            SortKey::Sent => a.total().sent.cmp(&b.total().sent),
+            SortKey::Recv => a.total().recv.cmp(&b.total().recv),
+            SortKey::Total => a.total().combined().cmp(&b.total().combined()),
         };
 
         let primary = if dir == SortDir::Desc {
@@ -76,12 +76,16 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
 
     sort_rows(&mut view, state.sort_key, state.sort_dir);
 
-    let max_total = view.iter().map(|&r| r.total_bytes).max().unwrap_or(0);
+    let max_total = view
+        .iter()
+        .map(|&r| r.total().combined())
+        .max()
+        .unwrap_or(0);
 
     let table_rows = view.iter().map(|&row| {
         let total_style = if max_total > 0 {
             Style::new().fg(theme::traffic_color(
-                row.total_bytes as f64 / max_total as f64,
+                row.total().combined() as f64 / max_total as f64,
             ))
         } else {
             Style::new()
@@ -90,9 +94,9 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
         Row::new([
             Cell::from(row.pid.to_string()),
             Cell::from(row.name.as_str()),
-            Cell::from(theme::format_bytes(row.sent_bytes, state.unit)),
-            Cell::from(theme::format_bytes(row.recv_bytes, state.unit)),
-            Cell::from(theme::format_bytes(row.total_bytes, state.unit)).style(total_style),
+            Cell::from(theme::format_bytes(row.total().sent, state.unit)),
+            Cell::from(theme::format_bytes(row.total().recv, state.unit)),
+            Cell::from(theme::format_bytes(row.total().combined(), state.unit)).style(total_style),
         ])
     });
 

@@ -22,6 +22,7 @@
           clang
           elfutils
           libbpf
+          llvm
           pkg-config
           rustup
           zlib

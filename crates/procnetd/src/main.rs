@@ -3,13 +3,6 @@
 use std::mem::MaybeUninit;
 
 use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
-use log::LevelFilter;
-use log4rs::{
-    Config,
-    append::file::FileAppender,
-    config::{Appender, Root},
-    encode::pattern::PatternEncoder,
-};
 
 #[allow(
     warnings,
@@ -44,16 +37,6 @@ fn main() -> anyhow::Result<()> {
 
     let stats_map = &skel.maps.STATS;
     let events_map = &skel.maps.EVENTS;
-
-    let file = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d} - {m}{n}")))
-        .build("/var/log/procnet.log")?;
-
-    let config = Config::builder()
-        .appender(Appender::builder().build("file", Box::new(file)))
-        .build(Root::builder().appender("file").build(LevelFilter::Debug))?;
-
-    log4rs::init_config(config)?;
 
     app::run(stats_map, events_map)?;
 
