@@ -123,7 +123,7 @@ mod tests {
         let mut buf = Vec::<u8>::new();
         write_msg(&mut buf, &borrowed).unwrap();
 
-        let prefix = u32::from_le_bytes(buf[..PREFIX_LEN].try_into().unwrap()) as usize;
+        let prefix = u16::from_le_bytes(buf[..PREFIX_LEN].try_into().unwrap()) as usize;
         assert_eq!(prefix, buf.len() - PREFIX_LEN);
 
         let parsed: SnapshotData = bincode::deserialize_from(&buf[PREFIX_LEN..]).unwrap();

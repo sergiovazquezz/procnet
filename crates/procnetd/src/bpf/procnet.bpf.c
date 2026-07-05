@@ -98,6 +98,7 @@ static __always_inline int account_bytes(u64 sent, u64 recv,
     return 0;
 }
 
+// TCP
 SEC("kretprobe/tcp_sendmsg")
 int BPF_KRETPROBE(procnet_tcp_sendmsg, int ret)
 {
@@ -118,6 +119,7 @@ int procnet_tcp_cleanup_rbuf(struct pt_regs* ctx)
     return account_bytes(0, (u64)size, TCP);
 }
 
+// UDP
 SEC("kretprobe/udp_sendmsg")
 int BPF_KRETPROBE(procnet_udp_sendmsg, int ret)
 {
@@ -129,6 +131,25 @@ int BPF_KRETPROBE(procnet_udp_sendmsg, int ret)
 
 SEC("kretprobe/udp_recvmsg")
 int BPF_KRETPROBE(procnet_udp_recvmsg, int ret)
+{
+    if (ret <= 0)
+        return 0;
+
+    return account_bytes(0, (u64)ret, UDP);
+}
+
+// UDPv6
+SEC("kretprobe/udpv6_sendmsg")
+int BPF_KRETPROBE(procnet_udpv6_sendmsg, int ret)
+{
+    if (ret <= 0)
+        return 0;
+
+    return account_bytes((u64)ret, 0, UDP);
+}
+
+SEC("kretprobe/udpv6_recvmsg")
+int BPF_KRETPROBE(procnet_udpv6_recvmsg, int ret)
 {
     if (ret <= 0)
         return 0;

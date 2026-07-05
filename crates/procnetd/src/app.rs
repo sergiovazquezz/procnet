@@ -8,7 +8,7 @@ use std::{
 use libbpf_rs::MapMut;
 use procnet_core::{
     ipc::{self, SnapshotRef},
-    stats::{StatsCollector, StatsRow},
+    stats::{MAP_SIZE, StatsCollector, StatsRow},
 };
 
 use crate::{errors::DaemonError, events::EventReader, server, stats_map::MapMutWrapper};
@@ -26,7 +26,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
     let events = EventReader::new(events_map)?;
 
-    let mut rows = Vec::<StatsRow>::with_capacity(20);
+    let mut rows = Vec::<StatsRow>::with_capacity(MAP_SIZE);
 
     let map_wrapper = MapMutWrapper::new(stats_map);
 

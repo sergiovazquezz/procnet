@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::events::ProcStartEvent;
 
+pub const MAP_SIZE: usize = 512;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatsBytes {
@@ -82,7 +84,7 @@ impl StatsCollector {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            procs: Vec::with_capacity(20),
+            procs: Vec::with_capacity(MAP_SIZE),
         }
     }
 

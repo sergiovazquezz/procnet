@@ -7,7 +7,7 @@ use std::{
 
 use procnet_core::{
     ipc::{self, SnapshotData},
-    stats::StatsRow,
+    stats::{MAP_SIZE, StatsRow},
 };
 
 use crate::{
@@ -21,7 +21,7 @@ mod tui;
 fn main() -> Result<(), ClientError> {
     let (snap_tx, snap_rx) = mpsc::channel::<SnapshotData>();
 
-    let mut rows = Vec::<StatsRow>::with_capacity(20);
+    let mut rows = Vec::<StatsRow>::with_capacity(MAP_SIZE);
 
     let mut tick: u64 = 0;
 

@@ -20,10 +20,8 @@
   usage of the new process. However it does not cause any data corruption other
   than displaying incorrect data for 1 tick.
 
-- `stream.set_nonblocking(true)` + `set_write_timeout(Some(short))`; on
-  `EAGAIN`/timeout, skip that client this tick (don't drop it); keep
-  `retain_mut` for EOF. If deeper decoupling is ever needed, give each client a
-  bounded writer thread.
+- Replace the `Vec<UnixStream>` with a thread per `UnixStream`. Use `mpsc` to
+  send data to each thread which then updates the Stream.
 
 ## Tests
 
@@ -33,9 +31,6 @@
 ## Features
 
 - Add systemd service.
-
-- Add udp with `udp_sendmsg`, `udp_recvmsg`, `udpv6_sendmsg` and
-  `udpv6_recvmsg`.
 
 - Use `log::error!()` for ebpf load.
 
@@ -49,8 +44,7 @@
 
 - Global: `--version`.
 
-- Daemon: `--socket`, `--interval`, `--stats-map-size`, `--events-size`,
-  `--allow-any`, `--log-file`.
+- Daemon: `--socket`, `--interval`, `--allow-any`, `--log-file`.
 
 - Client: `--socket`. `DEFAULT_SOCKET_PATH` becomes the default.
 
