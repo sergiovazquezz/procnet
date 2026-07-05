@@ -2,6 +2,7 @@
 
 use std::mem::MaybeUninit;
 
+use env_logger::Env;
 use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
 
 #[allow(
@@ -25,6 +26,8 @@ mod server;
 mod stats_map;
 
 fn main() -> anyhow::Result<()> {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
     bump_memlock_rlimit();
 
     let skel_builder = ProcnetSkelBuilder::default();
@@ -53,8 +56,8 @@ fn bump_memlock_rlimit() {
     let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &raw const rlimit) };
     if ret != 0 {
         let err = std::io::Error::last_os_error();
-        eprintln!(
-            "warning: failed to increase RLIMIT_MEMLOCK: {err} \
+        log::info!(
+            "failed to increase RLIMIT_MEMLOCK: {err} \
              (on kernel >= 5.11 with CAP_BPF this is harmless)"
         );
     }

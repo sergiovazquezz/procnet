@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+env_logger = "0.11.11"
 log = { workspace = true }
 libc = "0.2.183"
 libbpf-rs = "0.26.0"

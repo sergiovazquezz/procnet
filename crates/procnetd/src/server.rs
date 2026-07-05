@@ -26,7 +26,7 @@ pub fn run_listener(stream_list: &Mutex<Vec<UnixStream>>) -> Result<!, ListenerE
                 }
             }
             Err(e) => {
-                log::debug!("error accepting connection {}", e);
+                log::warn!("error accepting connection {}", e);
             }
         }
     }
