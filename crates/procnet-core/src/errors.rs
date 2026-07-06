@@ -1,3 +1,5 @@
+use std::io;
+
 use thiserror::Error;
 
 use crate::ipc::DEFAULT_SOCKET_PATH;
@@ -7,9 +9,9 @@ use crate::ipc::DEFAULT_SOCKET_PATH;
     "Failed to connect to socket at {DEFAULT_SOCKET_PATH}: {0}\n
     Hint: is the daemon running?"
 )]
-pub struct ConnectError(#[from] std::io::Error);
+pub struct ConnectError(#[from] io::Error);
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 pub enum MsgSendError {
     #[error("Io: {0}")]
     Io(#[from] std::io::Error),
@@ -19,7 +21,7 @@ pub enum MsgSendError {
     Oversized,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum MsgReadError {
     #[error("EOF reached, daemon closed")]
     Eof,

@@ -32,8 +32,6 @@
 
 - Add systemd service.
 
-- Use `log::error!()` for ebpf load.
-
 - Add new pane for each process with the protocols used and cumulative stats.
 
 - Add scrolling.
@@ -42,11 +40,11 @@
 
 ### Arguments
 
-- Global: `--version`.
+- Run.
 
-- Daemon: `--socket`, `--interval`, `--allow-any`, `--log-file`.
+- Stats: `--json`.
 
-- Client: `--socket`. `DEFAULT_SOCKET_PATH` becomes the default.
+- Daemon: `--interval`, `--reset`, `--status`.
 
 ## Possible features
 

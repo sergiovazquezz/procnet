@@ -15,6 +15,7 @@ pub const DEFAULT_SOCKET_PATH: &str = "/tmp/procnetd.sock";
 /// Length of prefix used to frame each `bincode` message.
 const PREFIX_LEN: usize = 2;
 
+// Serialize is only used for tests.
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SnapshotData {
     pub tick: u64,
@@ -35,7 +36,7 @@ pub fn connect_to_socket() -> Result<UnixStream, ConnectError> {
 }
 
 /// The resulting `buf` is `[len: u16 LE][payload: bincode]`.
-pub fn write_msg(buf: &mut Vec<u8>, msg: &SnapshotRef<'_>) -> Result<(), MsgSendError> {
+pub fn write_msg<T: Serialize>(buf: &mut Vec<u8>, msg: &T) -> Result<(), MsgSendError> {
     buf.clear();
     buf.extend_from_slice(&[0u8; PREFIX_LEN]);
 
