@@ -1,24 +1,30 @@
 use std::{
-    sync::{Arc, Mutex, mpsc::SyncSender},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, SyncSender},
+    },
     thread,
-    time::Duration,
 };
 
 use libbpf_rs::MapMut;
 use procnet_core::{
-    ipc::{self, SnapshotRef},
+    ipc::{self, DaemonCommand, SnapshotRef},
     stats::{MAP_SIZE, StatsCollector, StatsRow},
 };
 
-use crate::{errors::DaemonError, events::EventReader, server, stats_map::MapMutWrapper};
+use crate::{
+    errors::DaemonError, events::EventReader, server, state::DaemonState, stats_map::MapMutWrapper,
+};
 
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
+    let daemon_state = Arc::new(DaemonState::default());
+
     let senders = Arc::new(Mutex::new(Vec::<SyncSender<Arc<[u8]>>>::new()));
     let listener_senders = Arc::clone(&senders);
-    let join_handle = thread::spawn(move || server::run_listener(&listener_senders));
 
-    let refresh_interval = Duration::from_secs(1);
-    let mut tick: u64 = 0;
+    let (config_tx, config_rx) = mpsc::channel::<DaemonCommand>();
+
+    let join_handle = thread::spawn(move || server::run_listener(&listener_senders, config_tx));
 
     let mut stats = StatsCollector::default();
 
@@ -30,6 +36,20 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
     let mut buf = Vec::<u8>::with_capacity(8 * 1024);
 
+    let state_config_thread = Arc::clone(&daemon_state);
+
+    #[expect(clippy::todo)]
+    thread::spawn(move || {
+        while let Ok(command) = config_rx.recv() {
+            match command {
+                DaemonCommand::Interval { interval } => {
+                    state_config_thread.set_interval(interval);
+                }
+                _ => todo!(),
+            }
+        }
+    });
+
     loop {
         for event in events.drain_available()? {
             stats.apply_event(event);
@@ -37,14 +57,17 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
         stats.collect_rows(&map_wrapper, &mut rows);
 
-        let snapshot = SnapshotRef { tick, rows: &rows };
+        let snapshot = SnapshotRef {
+            tick: daemon_state.tick(),
+            rows: &rows,
+        };
         ipc::write_msg(&mut buf, &snapshot)?;
 
         let shared: Arc<[u8]> = Arc::from(buf.as_slice());
 
         server::update_streams(&senders, &shared)?;
 
-        thread::sleep(refresh_interval);
+        thread::sleep(daemon_state.interval());
 
         if join_handle.is_finished() {
             match join_handle.join() {
@@ -54,6 +77,6 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
             }
         }
 
-        tick = tick.wrapping_add(1);
+        daemon_state.advance_tick();
     }
 }
