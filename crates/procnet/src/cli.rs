@@ -1,18 +1,12 @@
 use std::{io::Write, os::unix::net::UnixStream};
 
 use clap::{Parser, Subcommand};
-use procnet_core::{errors::MsgSendError, ipc};
-use serde::Serialize;
+use procnet_core::{
+    errors::MsgSendError,
+    ipc::{self, DaemonCommand},
+};
 
-#[derive(Subcommand, Serialize)]
-pub enum DaemonCommand {
-    Interval {
-        /// Refresh interval in seconds
-        interval: f32,
-    },
-    Reset,
-    Status,
-}
+const BUF_SIZE: usize = size_of::<u16>() + size_of::<DaemonCommand>();
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -29,8 +23,6 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
 }
-
-const BUF_SIZE: usize = size_of::<u16>() + size_of::<DaemonCommand>();
 
 pub fn send_daemon_command(
     command: &DaemonCommand,
