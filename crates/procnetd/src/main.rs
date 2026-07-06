@@ -23,6 +23,7 @@ mod app;
 mod errors;
 mod events;
 mod server;
+mod state;
 mod stats_map;
 
 fn main() -> anyhow::Result<()> {
