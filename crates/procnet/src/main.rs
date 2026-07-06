@@ -5,27 +5,39 @@ use std::{
     time::Duration,
 };
 
+use clap::Parser;
 use procnet_core::{
     ipc::{self, SnapshotData},
     stats::{MAP_SIZE, StatsRow},
 };
 
 use crate::{
+    cli::{Cli, Command},
     errors::ClientError,
     tui::{Action, Tui},
 };
 
+mod cli;
 mod errors;
 mod tui;
 
 fn main() -> Result<(), ClientError> {
+    let args = Cli::parse();
+
+    let mut stream = ipc::connect_to_socket()?;
+
+    if let Some(command) = args.command
+        && let Command::Daemon { command: com } = command
+    {
+        cli::send_daemon_command(&com, &mut stream)?;
+        return Ok(());
+    }
+
     let (snap_tx, snap_rx) = mpsc::channel::<SnapshotData>();
 
     let mut rows = Vec::<StatsRow>::with_capacity(MAP_SIZE);
 
     let mut tick: u64 = 0;
-
-    let stream = ipc::connect_to_socket()?;
 
     let mut tui = Tui::new();
 

@@ -1,12 +1,14 @@
 use std::io;
 
-use procnet_core::errors::ConnectError;
+use procnet_core::errors::{ConnectError, MsgSendError};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ClientError {
-    #[error("Ipc error: {0}")]
-    Ipc(#[from] ConnectError),
+    #[error("Socket connection error: {0}")]
+    SocketConnection(#[from] ConnectError),
+    #[error("{0}")]
+    MsgSendError(#[from] MsgSendError),
     #[error("Tui error: {0}")]
     Tui(#[from] TuiError),
     #[error("The daemon is not responding")]
