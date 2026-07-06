@@ -93,7 +93,7 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
 
         Row::new([
             Cell::from(row.pid.to_string()),
-            Cell::from(row.name.as_str()),
+            Cell::from(row.name.as_ref()),
             Cell::from(theme::format_bytes(row.total().sent, state.unit)),
             Cell::from(theme::format_bytes(row.total().recv, state.unit)),
             Cell::from(theme::format_bytes(row.total().combined(), state.unit)).style(total_style),

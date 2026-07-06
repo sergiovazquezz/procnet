@@ -83,7 +83,7 @@ mod tests {
     fn sample_rows() -> Vec<StatsRow> {
         vec![StatsRow::new(
             130,
-            "firefox".to_string(),
+            "firefox",
             StatsBytes {
                 sent: 512,
                 recv: 1024,

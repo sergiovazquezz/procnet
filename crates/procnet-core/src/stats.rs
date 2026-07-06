@@ -34,15 +34,30 @@ pub trait StatsMap {
 #[derive(Debug)]
 struct ProcInfo {
     pid: u32,
-    name: String,
+    name: Box<str>,
     tcp_cum: StatsBytes,
     udp_cum: StatsBytes,
+}
+
+impl ProcInfo {
+    #[must_use]
+    fn new<T>(pid: u32, name: T, tcp_cum: StatsBytes, udp_cum: StatsBytes) -> Self
+    where
+        T: Into<Box<str>>,
+    {
+        Self {
+            pid,
+            name: name.into(),
+            tcp_cum,
+            udp_cum,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct StatsRow {
     pub pid: u32,
-    pub name: String,
+    pub name: Box<str>,
     pub tcp: StatsBytes,
     pub udp: StatsBytes,
     total: StatsBytes,
@@ -51,10 +66,13 @@ pub struct StatsRow {
 #[expect(clippy::missing_const_for_fn)]
 impl StatsRow {
     #[must_use]
-    pub fn new(pid: u32, name: String, tcp: StatsBytes, udp: StatsBytes) -> Self {
+    pub fn new<T>(pid: u32, name: T, tcp: StatsBytes, udp: StatsBytes) -> Self
+    where
+        T: Into<Box<str>>,
+    {
         Self {
             pid,
-            name,
+            name: name.into(),
             tcp,
             udp,
             total: StatsBytes {
@@ -92,16 +110,16 @@ impl StatsCollector {
         event.name.make_ascii_lowercase();
 
         if let Some(p) = self.procs.iter_mut().find(|p| p.pid == event.pid) {
-            p.name = event.name;
+            p.name = Box::from(event.name);
             p.tcp_cum = StatsBytes::default();
             p.udp_cum = StatsBytes::default();
         } else {
-            self.procs.push(ProcInfo {
-                pid: event.pid,
-                name: event.name,
-                tcp_cum: StatsBytes::default(),
-                udp_cum: StatsBytes::default(),
-            });
+            self.procs.push(ProcInfo::new(
+                event.pid,
+                event.name,
+                StatsBytes::default(),
+                StatsBytes::default(),
+            ));
         }
     }
 
@@ -238,7 +256,7 @@ mod tests {
     fn stats_row_new_saturates_on_overflow() {
         let row = StatsRow::new(
             130,
-            "firefox".into(),
+            "firefox",
             StatsBytes {
                 sent: u64::MAX,
                 recv: 10,
@@ -257,7 +275,7 @@ mod tests {
             name: "GOOGLE".into(),
         });
 
-        assert_eq!(stats.procs[0].name, "google".to_string());
+        assert_eq!(stats.procs[0].name.as_ref(), "google");
 
         let bytes = StatsBytes::default();
         let map = FakeStatsMap::new(10, bytes, bytes);
@@ -267,7 +285,7 @@ mod tests {
         stats.collect_rows(&map, &mut rows);
 
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].name, "google".to_string());
+        assert_eq!(rows[0].name.as_ref(), "google");
     }
 
     #[test]
@@ -283,7 +301,7 @@ mod tests {
         });
 
         assert_eq!(stats.procs.len(), 1);
-        assert_eq!(stats.procs[0].name, "second");
+        assert_eq!(stats.procs[0].name.as_ref(), "second");
 
         let zero_bytes = StatsBytes { sent: 0, recv: 0 };
         assert_eq!(stats.procs[0].tcp_cum, zero_bytes);
@@ -312,7 +330,7 @@ mod tests {
             rows[0],
             StatsRow::new(
                 140,
-                "librewolf".into(),
+                "librewolf",
                 StatsBytes::default(),
                 StatsBytes::default()
             )
