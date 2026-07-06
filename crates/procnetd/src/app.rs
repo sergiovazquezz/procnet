@@ -1,6 +1,5 @@
 use std::{
-    os::unix::net::UnixStream,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc::SyncSender},
     thread,
     time::Duration,
 };
@@ -14,10 +13,9 @@ use procnet_core::{
 use crate::{errors::DaemonError, events::EventReader, server, stats_map::MapMutWrapper};
 
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
-    let stream_list = Arc::new(Mutex::new(Vec::<UnixStream>::with_capacity(2)));
-    let list_for_server = Arc::clone(&stream_list);
-
-    let join_handle = thread::spawn(move || server::run_listener(&list_for_server));
+    let senders = Arc::new(Mutex::new(Vec::<SyncSender<Arc<[u8]>>>::new()));
+    let listener_senders = Arc::clone(&senders);
+    let join_handle = thread::spawn(move || server::run_listener(&listener_senders));
 
     let refresh_interval = Duration::from_secs(1);
     let mut tick: u64 = 0;
@@ -42,7 +40,9 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
         let snapshot = SnapshotRef { tick, rows: &rows };
         ipc::write_msg(&mut buf, &snapshot)?;
 
-        server::update_streams(&stream_list, &buf)?;
+        let shared: Arc<[u8]> = Arc::from(buf.as_slice());
+
+        server::update_streams(&senders, &shared)?;
 
         thread::sleep(refresh_interval);
 
