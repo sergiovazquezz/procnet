@@ -8,6 +8,8 @@ publish = false
 workspace = true
 
 [dependencies]
+clap = { workspace = true }
 procnet-core = { path = "../procnet-core" }
 ratatui = "0.30.0"
+serde = { workspace = true }
 thiserror = { workspace = true }

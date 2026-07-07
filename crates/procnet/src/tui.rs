@@ -30,9 +30,9 @@ impl Tui {
         }
     }
 
-    pub fn draw(&mut self, tick: u64, rows: &[StatsRow]) -> Result<(), TuiError> {
+    pub fn draw(&mut self, tick: u64, interval: u64, rows: &[StatsRow]) -> Result<(), TuiError> {
         self.terminal
-            .draw(|frame| view::render(frame, tick, rows, &self.state))
+            .draw(|frame| view::render(frame, tick, interval, rows, &self.state))
             .map_err(TuiError::Draw)?;
 
         Ok(())

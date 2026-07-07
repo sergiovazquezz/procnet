@@ -9,7 +9,7 @@
 
 ## Known quirks
 
-- Remove socket file on `SIGINT`/`SIGTERM`:
+- Remove socket file on `SIGINT`/`SIGTERM`, use `nix` crate:
 
     ```rust
     fs::remove_file(socket)
@@ -20,9 +20,6 @@
   usage of the new process. However it does not cause any data corruption other
   than displaying incorrect data for 1 tick.
 
-- Replace the `Vec<UnixStream>` with a thread per `UnixStream`. Use `mpsc` to
-  send data to each thread which then updates the Stream.
-
 ## Tests
 
 - `sort_rows` (`view.rs:17`) — test each `SortKey` both dirs + the `pid`
@@ -32,8 +29,6 @@
 
 - Add systemd service.
 
-- Use `log::error!()` for ebpf load.
-
 - Add new pane for each process with the protocols used and cumulative stats.
 
 - Add scrolling.
@@ -42,11 +37,7 @@
 
 ### Arguments
 
-- Global: `--version`.
-
-- Daemon: `--socket`, `--interval`, `--allow-any`, `--log-file`.
-
-- Client: `--socket`. `DEFAULT_SOCKET_PATH` becomes the default.
+- Stats: `--json`.
 
 ## Possible features
 

@@ -3,7 +3,8 @@ use std::{
     os::unix::net::UnixStream,
 };
 
-use serde::{Deserialize, Serialize};
+use clap::{Subcommand, value_parser};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     errors::{ConnectError, MsgReadError, MsgSendError},
@@ -15,8 +16,21 @@ pub const DEFAULT_SOCKET_PATH: &str = "/tmp/procnetd.sock";
 /// Length of prefix used to frame each `bincode` message.
 const PREFIX_LEN: usize = 2;
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Subcommand, Serialize, Deserialize)]
+pub enum DaemonCommand {
+    Run,
+    Interval {
+        /// Daemon refresh interval in milliseconds (100ms - 5000ms).
+        #[arg(value_parser = value_parser!(u64).range(100..=5000))]
+        interval: u64,
+    },
+    Reset,
+}
+
+// NOTE: Serialize is only used for tests.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SnapshotData {
+    pub interval: u64,
     pub tick: u64,
     pub rows: Vec<StatsRow>,
 }
@@ -25,6 +39,7 @@ pub struct SnapshotData {
 /// row buffer each tick.
 #[derive(Serialize)]
 pub struct SnapshotRef<'a> {
+    pub interval: u64,
     pub tick: u64,
     pub rows: &'a [StatsRow],
 }
@@ -35,7 +50,7 @@ pub fn connect_to_socket() -> Result<UnixStream, ConnectError> {
 }
 
 /// The resulting `buf` is `[len: u16 LE][payload: bincode]`.
-pub fn write_msg(buf: &mut Vec<u8>, msg: &SnapshotRef<'_>) -> Result<(), MsgSendError> {
+pub fn write_msg<T: Serialize>(buf: &mut Vec<u8>, msg: &T) -> Result<(), MsgSendError> {
     buf.clear();
     buf.extend_from_slice(&[0u8; PREFIX_LEN]);
 
@@ -47,7 +62,11 @@ pub fn write_msg(buf: &mut Vec<u8>, msg: &SnapshotRef<'_>) -> Result<(), MsgSend
     Ok(())
 }
 
-pub fn read_msg<R: BufRead>(reader: &mut R) -> Result<SnapshotData, MsgReadError> {
+pub fn read_msg<R, T>(reader: &mut R) -> Result<T, MsgReadError>
+where
+    R: BufRead,
+    T: DeserializeOwned,
+{
     let mut prefix_buf = [0u8; PREFIX_LEN];
     read_exact_or_eof(reader, &mut prefix_buf)?;
 
@@ -55,7 +74,7 @@ pub fn read_msg<R: BufRead>(reader: &mut R) -> Result<SnapshotData, MsgReadError
     let mut payload_buf = vec![0u8; payload_len];
     read_exact_or_eof(reader, &mut payload_buf)?;
 
-    let response: SnapshotData = bincode::deserialize_from(payload_buf.as_slice())?;
+    let response = bincode::deserialize_from(payload_buf.as_slice())?;
 
     Ok(response)
 }
@@ -73,7 +92,10 @@ fn read_exact_or_eof<R: Read>(reader: &mut R, dest: &mut [u8]) -> Result<(), Msg
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use std::io::{BufReader, Cursor};
+    use std::{
+        assert_matches,
+        io::{BufReader, Cursor},
+    };
 
     use crate::stats::StatsBytes;
 
@@ -82,7 +104,7 @@ mod tests {
     fn sample_rows() -> Vec<StatsRow> {
         vec![StatsRow::new(
             130,
-            "firefox".to_string(),
+            "firefox",
             StatsBytes {
                 sent: 512,
                 recv: 1024,
@@ -99,10 +121,12 @@ mod tests {
         let rows = sample_rows();
 
         let owned = SnapshotData {
+            interval: 1000,
             tick: 42,
             rows: rows.clone(),
         };
         let borrowed = SnapshotRef {
+            interval: 1000,
             tick: 42,
             rows: &rows,
         };
@@ -117,6 +141,7 @@ mod tests {
     fn write_msg_bytes_frames_with_le_length_prefix() {
         let rows = sample_rows();
         let borrowed = SnapshotRef {
+            interval: 100,
             tick: 42,
             rows: &rows,
         };
@@ -135,6 +160,7 @@ mod tests {
     fn write_msg_bytes_reuses_buffer_capacity() {
         let rows = sample_rows();
         let borrowed = SnapshotRef {
+            interval: 5000,
             tick: 42,
             rows: &rows,
         };
@@ -154,6 +180,7 @@ mod tests {
     fn read_msg_round_trips_frame() {
         let rows = sample_rows();
         let borrowed = SnapshotRef {
+            interval: 2500,
             tick: 7,
             rows: &rows,
         };
@@ -161,8 +188,9 @@ mod tests {
         write_msg(&mut buf, &borrowed).unwrap();
 
         let mut reader = BufReader::new(Cursor::new(buf));
-        let parsed = read_msg(&mut reader).unwrap();
+        let parsed: SnapshotData = read_msg(&mut reader).unwrap();
 
+        assert_eq!(parsed.interval, 2500);
         assert_eq!(parsed.tick, 7);
         assert_eq!(parsed.rows, rows);
     }
@@ -170,6 +198,7 @@ mod tests {
     #[test]
     fn read_msg_returns_eof_on_closed_stream() {
         let mut reader = BufReader::new(Cursor::new(Vec::<u8>::new()));
-        assert!(matches!(read_msg(&mut reader), Err(MsgReadError::Eof)));
+        let result = read_msg::<_, SnapshotData>(&mut reader);
+        assert_matches!(result, Err(MsgReadError::Eof));
     }
 }

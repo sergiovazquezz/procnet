@@ -1,32 +1,87 @@
 use std::{
-    io::Write,
-    os::unix::net::{UnixListener, UnixStream},
-    sync::Mutex,
+    io::{BufReader, Write},
+    os::unix::net::UnixListener,
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, SyncSender, TrySendError},
+    },
+    thread,
     time::Duration,
 };
 
-use procnet_core::ipc::DEFAULT_SOCKET_PATH;
+use procnet_core::ipc::{self, DEFAULT_SOCKET_PATH, DaemonCommand};
 
-use crate::errors::{ListenerError, UpdateError};
+use crate::{
+    errors::{ListenerError, MutexPoison},
+    state::DaemonState,
+};
 
-pub fn run_listener(stream_list: &Mutex<Vec<UnixStream>>) -> Result<!, ListenerError> {
+type SenderList = Mutex<Vec<SyncSender<Arc<[u8]>>>>;
+
+#[expect(clippy::needless_pass_by_value)]
+pub fn run_listener(
+    senders: Arc<SenderList>,
+    daemon_state: Arc<DaemonState>,
+) -> Result<!, ListenerError> {
     let _ = std::fs::remove_file(DEFAULT_SOCKET_PATH);
 
     let listener = UnixListener::bind(DEFAULT_SOCKET_PATH)?;
 
     for stream in listener.incoming() {
         match stream {
-            Ok(s) => {
-                if let Ok(mut list) = stream_list.lock() {
-                    s.set_write_timeout(Some(Duration::from_millis(200)))?;
+            Ok(stream) => {
+                let senders_clone = Arc::clone(&senders);
+                let daemon_state_clone = Arc::clone(&daemon_state);
 
-                    list.push(s);
-                } else {
-                    return Err(ListenerError::StreamListPoison);
-                }
+                thread::spawn(move || {
+                    if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(2))) {
+                        log::warn!("Failed to set read timeout on incoming connection: {e}");
+                        return;
+                    }
+
+                    let mut reader = BufReader::new(stream);
+
+                    let msg = match ipc::read_msg(&mut reader) {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            log::warn!("Dropping client: initial command read failed: {e}");
+                            return;
+                        }
+                    };
+
+                    if msg != DaemonCommand::Run {
+                        // NOTE: If the `stats` Mutex is poisoned, `app::run()` will discover it on
+                        // its next lock attempt and exit, so we ignore the error here.
+                        let _ = daemon_state_clone.update(msg);
+                        return;
+                    }
+
+                    let mut stream = reader.into_inner();
+
+                    if let Err(e) = stream.set_write_timeout(Some(Duration::from_millis(200))) {
+                        log::warn!("Failed to set write timeout on incoming connection: {e}");
+                        return;
+                    }
+
+                    let (tx, rx) = mpsc::sync_channel::<Arc<[u8]>>(4);
+
+                    match senders_clone.lock() {
+                        Ok(mut guard) => guard.push(tx),
+                        Err(_) => return,
+                    }
+
+                    while let Ok(data) = rx.recv() {
+                        if let Err(e) = stream.write_all(&data) {
+                            log::debug!("Client writer write_all failed: {e}");
+                            break;
+                        }
+                    }
+
+                    log::debug!("Client writer exiting (channel closed)");
+                });
             }
             Err(e) => {
-                log::warn!("error accepting connection {}", e);
+                log::warn!("Error accepting connection {e}");
             }
         }
     }
@@ -34,14 +89,15 @@ pub fn run_listener(stream_list: &Mutex<Vec<UnixStream>>) -> Result<!, ListenerE
     unreachable!("UnixListener::incoming() never terminates")
 }
 
-pub fn update_streams(
-    stream_list: &Mutex<Vec<UnixStream>>,
-    bytes: &[u8],
-) -> Result<(), UpdateError> {
-    stream_list
-        .lock()
-        .map_err(|_| UpdateError)?
-        .retain_mut(|stream| stream.write_all(bytes).is_ok());
+// NOTE: A `sender` will be evicted on the tick following the one in which the
+// `receiver` was dropped.
+pub fn update_streams(tx: &SenderList, bytes: &Arc<[u8]>) -> Result<(), MutexPoison> {
+    tx.lock()
+        .map_err(|_| MutexPoison)?
+        .retain(|sender| match sender.try_send(Arc::clone(bytes)) {
+            Ok(()) | Err(TrySendError::Full(_)) => true,
+            Err(TrySendError::Disconnected(_)) => false,
+        });
 
     Ok(())
 }

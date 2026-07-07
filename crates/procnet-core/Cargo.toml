@@ -9,5 +9,6 @@ workspace = true
 
 [dependencies]
 bincode = { workspace = true }
+clap = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

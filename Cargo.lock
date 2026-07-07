@@ -1339,8 +1339,10 @@ dependencies = [
 name = "procnet"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "procnet-core",
  "ratatui",
+ "serde",
  "thiserror 2.0.18",
 ]
 
@@ -1349,6 +1351,7 @@ name = "procnet-core"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "clap",
  "serde",
  "thiserror 2.0.18",
 ]

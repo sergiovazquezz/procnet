@@ -21,7 +21,7 @@ pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
             SortKey::Name => a.name.cmp(&b.name),
             SortKey::Sent => a.total().sent.cmp(&b.total().sent),
             SortKey::Recv => a.total().recv.cmp(&b.total().recv),
-            SortKey::Total => a.total().combined().cmp(&b.total().combined()),
+            SortKey::Total => a.total().combine().cmp(&b.total().combine()),
         };
 
         let primary = if dir == SortDir::Desc {
@@ -34,14 +34,14 @@ pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
     });
 }
 
-pub fn render(frame: &mut Frame, tick: u64, rows: &[StatsRow], state: &TuiState) {
+pub fn render(frame: &mut Frame, tick: u64, interval: u64, rows: &[StatsRow], state: &TuiState) {
     let mut constraints = vec![Constraint::Min(1), Constraint::Length(1)];
     if state.active_pane == Pane::Filter {
         constraints.push(Constraint::Length(1));
     }
     let layout = Layout::vertical(constraints).split(frame.area());
 
-    render_table(frame, layout[0], tick, rows, state);
+    render_table(frame, layout[0], tick, interval, rows, state);
     render_keybind_bar(frame, layout[1], state);
 
     match state.active_pane {
@@ -52,7 +52,14 @@ pub fn render(frame: &mut Frame, tick: u64, rows: &[StatsRow], state: &TuiState)
     }
 }
 
-fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], state: &TuiState) {
+fn render_table(
+    frame: &mut Frame,
+    area: Rect,
+    tick: u64,
+    interval: u64,
+    rows: &[StatsRow],
+    state: &TuiState,
+) {
     if rows.is_empty() {
         frame.render_widget(
             Paragraph::new("Waiting for process stats...")
@@ -76,16 +83,12 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
 
     sort_rows(&mut view, state.sort_key, state.sort_dir);
 
-    let max_total = view
-        .iter()
-        .map(|&r| r.total().combined())
-        .max()
-        .unwrap_or(0);
+    let max_total = view.iter().map(|&r| r.total().combine()).max().unwrap_or(0);
 
     let table_rows = view.iter().map(|&row| {
         let total_style = if max_total > 0 {
             Style::new().fg(theme::traffic_color(
-                row.total().combined() as f64 / max_total as f64,
+                row.total().combine() as f64 / max_total as f64,
             ))
         } else {
             Style::new()
@@ -93,10 +96,10 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
 
         Row::new([
             Cell::from(row.pid.to_string()),
-            Cell::from(row.name.as_str()),
+            Cell::from(row.name.as_ref()),
             Cell::from(theme::format_bytes(row.total().sent, state.unit)),
             Cell::from(theme::format_bytes(row.total().recv, state.unit)),
-            Cell::from(theme::format_bytes(row.total().combined(), state.unit)).style(total_style),
+            Cell::from(theme::format_bytes(row.total().combine(), state.unit)).style(total_style),
         ])
     });
 
@@ -139,6 +142,10 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
         theme::muted_span("Tick:"),
         Span::raw(" "),
         theme::accent_span(tick.to_string().as_str()),
+        Span::raw("  "),
+        theme::muted_span("Interval:"),
+        Span::raw(" "),
+        theme::accent_span(format!("{}ms", interval).as_str()),
     ]);
 
     let table = Table::new(
