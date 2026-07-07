@@ -42,6 +42,10 @@ impl DaemonState {
         self.tick.fetch_add(1, Ordering::Relaxed);
     }
 
+    fn reset_tick(&self) {
+        self.tick.store(0, Ordering::Relaxed);
+    }
+
     #[expect(clippy::todo)]
     pub fn update(&self, command: DaemonCommand) {
         match command {
@@ -49,7 +53,7 @@ impl DaemonState {
                 unreachable!("Run is handled by procnetd::server::run_listener()")
             }
             DaemonCommand::Status => todo!(),
-            DaemonCommand::Reset => todo!(),
+            DaemonCommand::Reset => self.reset_tick(),
             DaemonCommand::Interval { interval } => self.set_interval(interval),
         }
     }

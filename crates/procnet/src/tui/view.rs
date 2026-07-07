@@ -21,7 +21,7 @@ pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
             SortKey::Name => a.name.cmp(&b.name),
             SortKey::Sent => a.total().sent.cmp(&b.total().sent),
             SortKey::Recv => a.total().recv.cmp(&b.total().recv),
-            SortKey::Total => a.total().combined().cmp(&b.total().combined()),
+            SortKey::Total => a.total().combine().cmp(&b.total().combine()),
         };
 
         let primary = if dir == SortDir::Desc {
@@ -76,16 +76,12 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
 
     sort_rows(&mut view, state.sort_key, state.sort_dir);
 
-    let max_total = view
-        .iter()
-        .map(|&r| r.total().combined())
-        .max()
-        .unwrap_or(0);
+    let max_total = view.iter().map(|&r| r.total().combine()).max().unwrap_or(0);
 
     let table_rows = view.iter().map(|&row| {
         let total_style = if max_total > 0 {
             Style::new().fg(theme::traffic_color(
-                row.total().combined() as f64 / max_total as f64,
+                row.total().combine() as f64 / max_total as f64,
             ))
         } else {
             Style::new()
@@ -96,7 +92,7 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
             Cell::from(row.name.as_ref()),
             Cell::from(theme::format_bytes(row.total().sent, state.unit)),
             Cell::from(theme::format_bytes(row.total().recv, state.unit)),
-            Cell::from(theme::format_bytes(row.total().combined(), state.unit)).style(total_style),
+            Cell::from(theme::format_bytes(row.total().combine(), state.unit)).style(total_style),
         ])
     });
 

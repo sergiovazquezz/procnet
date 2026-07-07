@@ -13,7 +13,7 @@ pub struct StatsBytes {
 
 impl StatsBytes {
     #[must_use]
-    pub const fn combined(&self) -> u64 {
+    pub const fn combine(&self) -> u64 {
         self.sent.saturating_add(self.recv)
     }
 }
