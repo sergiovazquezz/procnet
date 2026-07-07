@@ -20,9 +20,6 @@
   usage of the new process. However it does not cause any data corruption other
   than displaying incorrect data for 1 tick.
 
-- Replace the `Vec<UnixStream>` with a thread per `UnixStream`. Use `mpsc` to
-  send data to each thread which then updates the Stream.
-
 ## Tests
 
 - `sort_rows` (`view.rs:17`) — test each `SortKey` both dirs + the `pid`
@@ -40,11 +37,7 @@
 
 ### Arguments
 
-- Run.
-
 - Stats: `--json`.
-
-- Daemon: `--interval`, `--reset`, `--status`.
 
 ## Possible features
 

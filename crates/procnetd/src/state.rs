@@ -53,13 +53,11 @@ impl DaemonState {
         self.tick.store(0, Ordering::Relaxed);
     }
 
-    #[expect(clippy::todo)]
     pub fn update(&self, command: DaemonCommand) -> Result<(), MutexPoison> {
         match command {
             DaemonCommand::Run => {
                 unreachable!("Run is handled by procnetd::server::run_listener()")
             }
-            DaemonCommand::Status => todo!(),
             DaemonCommand::Reset => {
                 let mut guard = self.stats.lock().map_err(|_| MutexPoison)?;
                 self.reset_tick();

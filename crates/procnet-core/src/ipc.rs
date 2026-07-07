@@ -25,10 +25,9 @@ pub enum DaemonCommand {
         interval: u64,
     },
     Reset,
-    Status,
 }
 
-// Serialize is only used for tests.
+// NOTE: Serialize is only used for tests.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SnapshotData {
     pub tick: u64,
