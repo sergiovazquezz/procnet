@@ -30,6 +30,7 @@ pub enum DaemonCommand {
 // NOTE: Serialize is only used for tests.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SnapshotData {
+    pub interval: u64,
     pub tick: u64,
     pub rows: Vec<StatsRow>,
 }
@@ -38,6 +39,7 @@ pub struct SnapshotData {
 /// row buffer each tick.
 #[derive(Serialize)]
 pub struct SnapshotRef<'a> {
+    pub interval: u64,
     pub tick: u64,
     pub rows: &'a [StatsRow],
 }
@@ -119,10 +121,12 @@ mod tests {
         let rows = sample_rows();
 
         let owned = SnapshotData {
+            interval: 1000,
             tick: 42,
             rows: rows.clone(),
         };
         let borrowed = SnapshotRef {
+            interval: 1000,
             tick: 42,
             rows: &rows,
         };
@@ -137,6 +141,7 @@ mod tests {
     fn write_msg_bytes_frames_with_le_length_prefix() {
         let rows = sample_rows();
         let borrowed = SnapshotRef {
+            interval: 100,
             tick: 42,
             rows: &rows,
         };
@@ -155,6 +160,7 @@ mod tests {
     fn write_msg_bytes_reuses_buffer_capacity() {
         let rows = sample_rows();
         let borrowed = SnapshotRef {
+            interval: 5000,
             tick: 42,
             rows: &rows,
         };
@@ -174,6 +180,7 @@ mod tests {
     fn read_msg_round_trips_frame() {
         let rows = sample_rows();
         let borrowed = SnapshotRef {
+            interval: 2500,
             tick: 7,
             rows: &rows,
         };
@@ -183,6 +190,7 @@ mod tests {
         let mut reader = BufReader::new(Cursor::new(buf));
         let parsed: SnapshotData = read_msg(&mut reader).unwrap();
 
+        assert_eq!(parsed.interval, 2500);
         assert_eq!(parsed.tick, 7);
         assert_eq!(parsed.rows, rows);
     }

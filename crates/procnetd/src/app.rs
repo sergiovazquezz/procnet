@@ -1,6 +1,7 @@
 use std::{
     sync::{Arc, Mutex, mpsc::SyncSender},
     thread,
+    time::Duration,
 };
 
 use libbpf_rs::MapMut;
@@ -45,6 +46,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
         stats_guard.collect_rows(&map_wrapper, &mut rows);
 
         let snapshot = SnapshotRef {
+            interval: daemon_state.interval(),
             tick: daemon_state.tick(),
             rows: &rows,
         };
@@ -57,7 +59,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
         server::update_streams(&senders, &shared)?;
 
-        thread::sleep(daemon_state.interval());
+        thread::sleep(Duration::from_millis(daemon_state.interval()));
 
         if listener_handle.is_finished() {
             match listener_handle.join() {

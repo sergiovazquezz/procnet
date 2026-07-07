@@ -39,6 +39,7 @@ fn main() -> Result<(), ClientError> {
     let mut rows = Vec::<StatsRow>::with_capacity(MAP_SIZE);
 
     let mut tick: u64 = 0;
+    let mut interval: u64 = 0;
 
     let mut tui = Tui::new();
 
@@ -62,6 +63,7 @@ fn main() -> Result<(), ClientError> {
             match snap_rx.try_recv() {
                 Ok(snap) => {
                     tick = snap.tick;
+                    interval = snap.interval;
                     rows = snap.rows;
                 }
                 Err(TryRecvError::Empty) => break,
@@ -72,11 +74,11 @@ fn main() -> Result<(), ClientError> {
             }
         }
 
-        tui.draw(tick, &rows)?;
+        tui.draw(tick, interval, &rows)?;
 
         match tui.handle_event(Duration::from_millis(250))? {
             Action::Quit => break,
-            Action::Redraw => tui.draw(tick, &rows)?,
+            Action::Redraw => tui.draw(tick, interval, &rows)?,
             Action::None => {}
         }
     }

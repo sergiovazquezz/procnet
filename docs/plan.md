@@ -9,7 +9,7 @@
 
 ## Known quirks
 
-- Remove socket file on `SIGINT`/`SIGTERM`:
+- Remove socket file on `SIGINT`/`SIGTERM`, use `nix` crate:
 
     ```rust
     fs::remove_file(socket)

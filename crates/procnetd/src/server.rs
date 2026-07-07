@@ -77,7 +77,7 @@ pub fn run_listener(
                         }
                     }
 
-                    log::info!("Client writer exiting (channel closed)");
+                    log::debug!("Client writer exiting (channel closed)");
                 });
             }
             Err(e) => {

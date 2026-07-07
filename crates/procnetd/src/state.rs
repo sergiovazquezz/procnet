@@ -1,12 +1,9 @@
-use std::{
-    sync::{
-        Mutex,
-        atomic::{
-            AtomicU64,
-            Ordering::{self},
-        },
+use std::sync::{
+    Mutex,
+    atomic::{
+        AtomicU64,
+        Ordering::{self},
     },
-    time::Duration,
 };
 
 use procnet_core::{ipc::DaemonCommand, stats::StatsCollector};
@@ -30,8 +27,8 @@ impl DaemonState {
     const MIN_INTERVAL_MILLIS: u64 = 100;
     const MAX_INTERVAL_MILLIS: u64 = 5000;
 
-    pub fn interval(&self) -> Duration {
-        Duration::from_millis(self.interval.load(Ordering::Relaxed))
+    pub fn interval(&self) -> u64 {
+        self.interval.load(Ordering::Relaxed)
     }
 
     fn set_interval(&self, millis: u64) {

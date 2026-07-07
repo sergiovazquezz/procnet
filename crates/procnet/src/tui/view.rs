@@ -34,14 +34,14 @@ pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
     });
 }
 
-pub fn render(frame: &mut Frame, tick: u64, rows: &[StatsRow], state: &TuiState) {
+pub fn render(frame: &mut Frame, tick: u64, interval: u64, rows: &[StatsRow], state: &TuiState) {
     let mut constraints = vec![Constraint::Min(1), Constraint::Length(1)];
     if state.active_pane == Pane::Filter {
         constraints.push(Constraint::Length(1));
     }
     let layout = Layout::vertical(constraints).split(frame.area());
 
-    render_table(frame, layout[0], tick, rows, state);
+    render_table(frame, layout[0], tick, interval, rows, state);
     render_keybind_bar(frame, layout[1], state);
 
     match state.active_pane {
@@ -52,7 +52,14 @@ pub fn render(frame: &mut Frame, tick: u64, rows: &[StatsRow], state: &TuiState)
     }
 }
 
-fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], state: &TuiState) {
+fn render_table(
+    frame: &mut Frame,
+    area: Rect,
+    tick: u64,
+    interval: u64,
+    rows: &[StatsRow],
+    state: &TuiState,
+) {
     if rows.is_empty() {
         frame.render_widget(
             Paragraph::new("Waiting for process stats...")
@@ -135,6 +142,10 @@ fn render_table(frame: &mut Frame, area: Rect, tick: u64, rows: &[StatsRow], sta
         theme::muted_span("Tick:"),
         Span::raw(" "),
         theme::accent_span(tick.to_string().as_str()),
+        Span::raw("  "),
+        theme::muted_span("Interval:"),
+        Span::raw(" "),
+        theme::accent_span(format!("{}ms", interval).as_str()),
     ]);
 
     let table = Table::new(
