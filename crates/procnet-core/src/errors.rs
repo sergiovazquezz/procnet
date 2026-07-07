@@ -5,10 +5,7 @@ use thiserror::Error;
 use crate::ipc::DEFAULT_SOCKET_PATH;
 
 #[derive(Error, Debug)]
-#[error(
-    "Failed to connect to socket at {DEFAULT_SOCKET_PATH}: {0}\n
-    Hint: is the daemon running?"
-)]
+#[error("Failed to connect to socket at {DEFAULT_SOCKET_PATH}: {0}\nHint: is the daemon running?")]
 pub struct ConnectError(#[from] io::Error);
 
 #[derive(Debug, Error)]
@@ -17,7 +14,7 @@ pub enum MsgSendError {
     Io(#[from] std::io::Error),
     #[error("Encode: {0}")]
     Encode(#[from] bincode::Error),
-    #[error("Serialized payload exceeds the u32 length-header limit")]
+    #[error("Serialized payload exceeds the u16 length-header limit")]
     Oversized,
 }
 

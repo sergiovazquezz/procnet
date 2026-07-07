@@ -25,3 +25,7 @@ Requirements:
 Profiling targets (`stats`, `record`, `flamegraph`, `heaptrack`, `run-profile`,
 `run-daemon-profile`) still require `sudo` because they launch profiling build
 with no caps.
+
+The profiling binaries themselves (`perf`, `flamegraph`, `heaptrack`) are not
+provided by the Nix devShell and must be installed on the host, since these
+targets run them under `sudo`, which does not inherit the shell's `PATH`.

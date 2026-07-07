@@ -1,4 +1,4 @@
-.PHONY: lint clear-logs build-release run-release run-daemon run-client \
+.PHONY: lint test clear-logs build-release run-release run-daemon run-client \
 	build-profile run-profile run-daemon-profile run-client-profile \
 	stats record flamegraph heaptrack clean install-caps verify-caps
 
@@ -11,7 +11,11 @@ CLIENT_PROFILE  := ./target/profiling/procnet
 
 
 lint:
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets -- -D warnings
+
+
+test:
+	cargo test --workspace
 
 
 # Release
@@ -64,3 +68,5 @@ clear-logs:
 
 clean:
 	cargo clean
+	rm -f perf.data perf.data.old flamegraph.svg
+	rm -rf logs
