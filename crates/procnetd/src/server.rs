@@ -3,7 +3,7 @@ use std::{
     os::unix::net::UnixListener,
     sync::{
         Arc, Mutex,
-        mpsc::{self, Sender, SyncSender, TrySendError},
+        mpsc::{self, SyncSender, TrySendError},
     },
     thread,
     time::Duration,
@@ -11,9 +11,12 @@ use std::{
 
 use procnet_core::ipc::{self, DEFAULT_SOCKET_PATH, DaemonCommand};
 
-use crate::errors::{
-    ListenerError::{self, StreamListPoison},
-    UpdateError,
+use crate::{
+    errors::{
+        ListenerError::{self, StreamListPoison},
+        UpdateError,
+    },
+    state::DaemonState,
 };
 
 type SenderList = Mutex<Vec<SyncSender<Arc<[u8]>>>>;
@@ -21,7 +24,7 @@ type SenderList = Mutex<Vec<SyncSender<Arc<[u8]>>>>;
 #[expect(clippy::needless_pass_by_value)]
 pub fn run_listener(
     senders: &SenderList,
-    config_tx: Sender<DaemonCommand>,
+    daemon_state: Arc<DaemonState>,
 ) -> Result<!, ListenerError> {
     let _ = std::fs::remove_file(DEFAULT_SOCKET_PATH);
 
@@ -30,16 +33,25 @@ pub fn run_listener(
     for stream in listener.incoming() {
         match stream {
             Ok(mut s) => {
-                s.set_read_timeout(Some(Duration::from_secs(1)))?;
+                s.set_read_timeout(Some(Duration::from_secs(2)))?;
+
                 let mut reader = BufReader::new(&s);
 
-                if let Ok(result) = ipc::read_msg(&mut reader) {
-                    let _ = config_tx.send(result);
+                let msg = match ipc::read_msg(&mut reader) {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        log::warn!("Dropping client: initial command read failed: {e}");
+                        drop(s);
+                        continue;
+                    }
+                };
+
+                if msg != DaemonCommand::Run {
+                    daemon_state.update(msg);
                     drop(s);
                     continue;
                 }
 
-                s.set_read_timeout(None)?;
                 s.set_write_timeout(Some(Duration::from_millis(200)))?;
 
                 let (tx, rx) = mpsc::sync_channel::<Arc<[u8]>>(4);

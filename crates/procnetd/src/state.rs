@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-const DEFAULT_INTERVAL_MILLIS: u64 = 1000;
+use procnet_core::ipc::DaemonCommand;
 
 pub struct DaemonState {
     /// Duration in milliseconds for which the Daemon must sleep in between
@@ -19,12 +19,19 @@ pub struct DaemonState {
 }
 
 impl DaemonState {
+    const DEFAULT_INTERVAL_MILLIS: u64 = 1000;
+    const MIN_INTERVAL_MILLIS: u64 = 100;
+    const MAX_INTERVAL_MILLIS: u64 = 5000;
+
     pub fn interval(&self) -> Duration {
         Duration::from_millis(self.interval.load(Ordering::Relaxed))
     }
 
-    pub fn set_interval(&self, millis: u64) {
-        self.interval.store(millis, Ordering::Relaxed);
+    fn set_interval(&self, millis: u64) {
+        self.interval.store(
+            millis.clamp(Self::MIN_INTERVAL_MILLIS, Self::MAX_INTERVAL_MILLIS),
+            Ordering::Relaxed,
+        );
     }
 
     pub fn tick(&self) -> u64 {
@@ -34,12 +41,24 @@ impl DaemonState {
     pub fn advance_tick(&self) {
         self.tick.fetch_add(1, Ordering::Relaxed);
     }
+
+    #[expect(clippy::todo)]
+    pub fn update(&self, command: DaemonCommand) {
+        match command {
+            DaemonCommand::Run => {
+                unreachable!("Run is handled by procnetd::server::run_listener()")
+            }
+            DaemonCommand::Status => todo!(),
+            DaemonCommand::Reset => todo!(),
+            DaemonCommand::Interval { interval } => self.set_interval(interval),
+        }
+    }
 }
 
 impl Default for DaemonState {
     fn default() -> Self {
         Self {
-            interval: AtomicU64::new(DEFAULT_INTERVAL_MILLIS),
+            interval: AtomicU64::new(Self::DEFAULT_INTERVAL_MILLIS),
             tick: AtomicU64::new(0),
         }
     }

@@ -7,7 +7,7 @@ use std::{
 
 use clap::Parser;
 use procnet_core::{
-    ipc::{self, SnapshotData},
+    ipc::{self, DaemonCommand, SnapshotData},
     stats::{MAP_SIZE, StatsRow},
 };
 
@@ -26,11 +26,12 @@ fn main() -> Result<(), ClientError> {
 
     let mut stream = ipc::connect_to_socket()?;
 
-    if let Some(command) = args.command
-        && let Command::Daemon { command: com } = command
-    {
-        cli::send_daemon_command(&com, &mut stream)?;
-        return Ok(());
+    match args.command {
+        Some(Command::Run) | None => cli::send_daemon_command(DaemonCommand::Run, &mut stream)?,
+        Some(Command::Daemon { command }) => {
+            cli::send_daemon_command(command, &mut stream)?;
+            return Ok(());
+        }
     }
 
     let (snap_tx, snap_rx) = mpsc::channel::<SnapshotData>();

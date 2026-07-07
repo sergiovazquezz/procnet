@@ -25,7 +25,7 @@ pub struct Cli {
 }
 
 pub fn send_daemon_command(
-    command: &DaemonCommand,
+    command: DaemonCommand,
     stream: &mut UnixStream,
 ) -> Result<(), MsgSendError> {
     let mut buf = Vec::<u8>::with_capacity(BUF_SIZE);

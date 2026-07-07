@@ -1,14 +1,11 @@
 use std::{
-    sync::{
-        Arc, Mutex,
-        mpsc::{self, SyncSender},
-    },
+    sync::{Arc, Mutex, mpsc::SyncSender},
     thread,
 };
 
 use libbpf_rs::MapMut;
 use procnet_core::{
-    ipc::{self, DaemonCommand, SnapshotRef},
+    ipc::{self, SnapshotRef},
     stats::{MAP_SIZE, StatsCollector, StatsRow},
 };
 
@@ -18,13 +15,12 @@ use crate::{
 
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let daemon_state = Arc::new(DaemonState::default());
+    let state_clone = Arc::clone(&daemon_state);
 
     let senders = Arc::new(Mutex::new(Vec::<SyncSender<Arc<[u8]>>>::new()));
     let listener_senders = Arc::clone(&senders);
 
-    let (config_tx, config_rx) = mpsc::channel::<DaemonCommand>();
-
-    let join_handle = thread::spawn(move || server::run_listener(&listener_senders, config_tx));
+    let join_handle = thread::spawn(move || server::run_listener(&listener_senders, state_clone));
 
     let mut stats = StatsCollector::default();
 
@@ -35,20 +31,6 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let map_wrapper = MapMutWrapper::new(stats_map);
 
     let mut buf = Vec::<u8>::with_capacity(8 * 1024);
-
-    let state_config_thread = Arc::clone(&daemon_state);
-
-    #[expect(clippy::todo)]
-    thread::spawn(move || {
-        while let Ok(command) = config_rx.recv() {
-            match command {
-                DaemonCommand::Interval { interval } => {
-                    state_config_thread.set_interval(interval);
-                }
-                _ => todo!(),
-            }
-        }
-    });
 
     loop {
         for event in events.drain_available()? {

@@ -3,7 +3,7 @@ use std::{
     os::unix::net::UnixStream,
 };
 
-use clap::Subcommand;
+use clap::{Subcommand, value_parser};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -16,10 +16,12 @@ pub const DEFAULT_SOCKET_PATH: &str = "/tmp/procnetd.sock";
 /// Length of prefix used to frame each `bincode` message.
 const PREFIX_LEN: usize = 2;
 
-#[derive(Subcommand, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Subcommand, Serialize, Deserialize)]
 pub enum DaemonCommand {
+    Run,
     Interval {
         /// Daemon refresh interval in milliseconds (100ms - 5000ms).
+        #[arg(value_parser = value_parser!(u64).range(100..=5000))]
         interval: u64,
     },
     Reset,
