@@ -1,12 +1,17 @@
 use std::{
-    sync::atomic::{
-        AtomicU64,
-        Ordering::{self},
+    sync::{
+        Mutex,
+        atomic::{
+            AtomicU64,
+            Ordering::{self},
+        },
     },
     time::Duration,
 };
 
-use procnet_core::ipc::DaemonCommand;
+use procnet_core::{ipc::DaemonCommand, stats::StatsCollector};
+
+use crate::errors::MutexPoison;
 
 pub struct DaemonState {
     /// Duration in milliseconds for which the Daemon must sleep in between
@@ -16,6 +21,8 @@ pub struct DaemonState {
 
     /// How many iterations have passed since the Daemon was started.
     tick: AtomicU64,
+
+    pub stats: Mutex<StatsCollector>,
 }
 
 impl DaemonState {
@@ -47,15 +54,21 @@ impl DaemonState {
     }
 
     #[expect(clippy::todo)]
-    pub fn update(&self, command: DaemonCommand) {
+    pub fn update(&self, command: DaemonCommand) -> Result<(), MutexPoison> {
         match command {
             DaemonCommand::Run => {
                 unreachable!("Run is handled by procnetd::server::run_listener()")
             }
             DaemonCommand::Status => todo!(),
-            DaemonCommand::Reset => self.reset_tick(),
+            DaemonCommand::Reset => {
+                let mut guard = self.stats.lock().map_err(|_| MutexPoison)?;
+                self.reset_tick();
+                guard.reset();
+            }
             DaemonCommand::Interval { interval } => self.set_interval(interval),
         }
+
+        Ok(())
     }
 }
 
@@ -64,6 +77,7 @@ impl Default for DaemonState {
         Self {
             interval: AtomicU64::new(Self::DEFAULT_INTERVAL_MILLIS),
             tick: AtomicU64::new(0),
+            stats: Mutex::new(StatsCollector::default()),
         }
     }
 }

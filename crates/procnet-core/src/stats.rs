@@ -106,6 +106,13 @@ impl StatsCollector {
         }
     }
 
+    pub fn reset(&mut self) {
+        for proc in &mut self.procs {
+            proc.tcp_cum = StatsBytes::default();
+            proc.udp_cum = StatsBytes::default();
+        }
+    }
+
     pub fn apply_event(&mut self, mut event: ProcStartEvent) {
         event.name.make_ascii_lowercase();
 
@@ -250,6 +257,24 @@ mod tests {
         v.extend_from_slice(&udp.recv.to_ne_bytes());
 
         v
+    }
+
+    #[test]
+    fn reset_zeroes_cumulative_stats() {
+        let mut stats = StatsCollector::default();
+        stats.apply_event(ProcStartEvent {
+            pid: 1,
+            name: "a".into(),
+        });
+        stats.procs[0].tcp_cum = StatsBytes { sent: 10, recv: 20 };
+        stats.procs[0].udp_cum = StatsBytes { sent: 30, recv: 40 };
+
+        stats.reset();
+
+        assert_eq!(stats.procs[0].tcp_cum, StatsBytes::default());
+        assert_eq!(stats.procs[0].udp_cum, StatsBytes::default());
+
+        assert_eq!(stats.procs.len(), 1);
     }
 
     #[test]

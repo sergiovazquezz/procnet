@@ -10,7 +10,7 @@ pub enum DaemonError {
     #[error("A listener error happened: {0}")]
     ListenerError(#[from] ListenerError),
     #[error("A stream update error happened: {0}")]
-    UpdateError(#[from] MutexPoison),
+    MutexPoison(#[from] MutexPoison),
     #[error("Failed to serialize snapshot for clients: {0}")]
     Serialize(#[from] MsgSendError),
     #[error("Listener thread exited unexpectedly (likely panic)")]

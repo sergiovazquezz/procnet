@@ -50,7 +50,9 @@ pub fn run_listener(
                     };
 
                     if msg != DaemonCommand::Run {
-                        daemon_state_clone.update(msg);
+                        // NOTE: If the `stats` Mutex is poisoned, `app::run()` will discover it on
+                        // its next lock attempt and exit, so we ignore the error here.
+                        let _ = daemon_state_clone.update(msg);
                         return;
                     }
 
