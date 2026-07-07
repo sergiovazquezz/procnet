@@ -20,7 +20,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let senders = Arc::new(Mutex::new(Vec::<SyncSender<Arc<[u8]>>>::new()));
     let listener_senders = Arc::clone(&senders);
 
-    let join_handle = thread::spawn(move || server::run_listener(&listener_senders, state_clone));
+    let join_handle = thread::spawn(move || server::run_listener(listener_senders, state_clone));
 
     let mut stats = StatsCollector::default();
 

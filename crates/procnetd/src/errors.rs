@@ -10,7 +10,7 @@ pub enum DaemonError {
     #[error("A listener error happened: {0}")]
     ListenerError(#[from] ListenerError),
     #[error("A stream update error happened: {0}")]
-    UpdateError(#[from] UpdateError),
+    UpdateError(#[from] MutexPoison),
     #[error("Failed to serialize snapshot for clients: {0}")]
     Serialize(#[from] MsgSendError),
     #[error("Listener thread exited unexpectedly (likely panic)")]
@@ -29,10 +29,8 @@ pub enum EventError {
 pub enum ListenerError {
     #[error("Failed to bind {DEFAULT_SOCKET_PATH}: {0}")]
     Bind(#[from] io::Error),
-    #[error("Mutex lock has been poisoned")]
-    StreamListPoison,
 }
 
 #[derive(Error, Debug)]
 #[error("Mutex lock has been poisoned")]
-pub struct UpdateError;
+pub struct MutexPoison;
