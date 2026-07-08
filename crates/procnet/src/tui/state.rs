@@ -218,7 +218,7 @@ impl Default for TuiState {
 impl TuiState {
     pub fn new() -> Self {
         Self {
-            sort_key: SortKey::Total,
+            sort_key: SortKey::Name,
             sort_dir: SortDir::Desc,
             active_pane: Pane::Command,
             filter_target: FilterTarget::Name,
