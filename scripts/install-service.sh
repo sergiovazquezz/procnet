@@ -47,7 +47,8 @@ echo "Installing systemd unit to $unit_dir"
 install -m 0644 "$unit_src" "$unit_dir/procnetd.service"
 
 systemctl --user daemon-reload
-systemctl --user enable --now procnetd.service
+systemctl --user enable procnetd.service
+systemctl --user restart procnetd.service
 
 echo ""
 echo "Done. Status:"

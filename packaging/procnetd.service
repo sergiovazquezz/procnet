@@ -6,8 +6,6 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=%h/.local/bin/procnetd
-Restart=on-failure
-RestartSec=2
 StandardOutput=journal
 StandardError=journal
 
