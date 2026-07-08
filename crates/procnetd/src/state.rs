@@ -1,25 +1,16 @@
-use std::sync::{
-    Mutex,
-    atomic::{
-        AtomicU64,
-        Ordering::{self},
-    },
-};
-
 use procnet_core::{ipc::DaemonCommand, stats::StatsCollector};
-
-use crate::errors::MutexPoison;
 
 pub struct DaemonState {
     /// Duration in milliseconds for which the Daemon must sleep in between
     /// iterations (100ms - 5000ms). Tied to
     /// `procnet_core::ipc::DaemonSubcommand::interval`.
-    interval: AtomicU64,
+    interval: u64,
 
-    /// How many iterations have passed since the Daemon was started.
-    tick: AtomicU64,
+    /// How many iterations have passed since the Daemon was started. First sent
+    /// snapshot at startup or after reset will have tick == 1.
+    tick: u64,
 
-    pub stats: Mutex<StatsCollector>,
+    pub stats: StatsCollector,
 }
 
 impl DaemonState {
@@ -27,52 +18,51 @@ impl DaemonState {
     const MIN_INTERVAL_MILLIS: u64 = 100;
     const MAX_INTERVAL_MILLIS: u64 = 5000;
 
-    pub fn interval(&self) -> u64 {
-        self.interval.load(Ordering::Relaxed)
+    #[inline]
+    pub const fn interval(&self) -> u64 {
+        self.interval
     }
 
-    fn set_interval(&self, millis: u64) {
-        self.interval.store(
-            millis.clamp(Self::MIN_INTERVAL_MILLIS, Self::MAX_INTERVAL_MILLIS),
-            Ordering::Relaxed,
-        );
+    #[inline]
+    fn set_interval(&mut self, millis: u64) {
+        self.interval = millis.clamp(Self::MIN_INTERVAL_MILLIS, Self::MAX_INTERVAL_MILLIS);
     }
 
-    pub fn tick(&self) -> u64 {
-        self.tick.load(Ordering::Relaxed)
+    #[inline]
+    pub const fn tick(&self) -> u64 {
+        self.tick
     }
 
-    pub fn advance_tick(&self) {
-        self.tick.fetch_add(1, Ordering::Relaxed);
+    #[inline]
+    pub const fn advance_tick(&mut self) {
+        self.tick += 1;
     }
 
-    fn reset_tick(&self) {
-        self.tick.store(0, Ordering::Relaxed);
+    #[inline]
+    const fn reset_tick(&mut self) {
+        self.tick = 0;
     }
 
-    pub fn update(&self, command: DaemonCommand) -> Result<(), MutexPoison> {
+    pub fn update(&mut self, command: DaemonCommand) {
         match command {
             DaemonCommand::Run => {
                 unreachable!("Run is handled by procnetd::server::run_listener()")
             }
             DaemonCommand::Reset => {
-                let mut guard = self.stats.lock().map_err(|_| MutexPoison)?;
+                self.stats.reset();
                 self.reset_tick();
-                guard.reset();
             }
             DaemonCommand::Interval { interval } => self.set_interval(interval),
         }
-
-        Ok(())
     }
 }
 
 impl Default for DaemonState {
     fn default() -> Self {
         Self {
-            interval: AtomicU64::new(Self::DEFAULT_INTERVAL_MILLIS),
-            tick: AtomicU64::new(0),
-            stats: Mutex::new(StatsCollector::default()),
+            interval: Self::DEFAULT_INTERVAL_MILLIS,
+            tick: 0,
+            stats: StatsCollector::default(),
         }
     }
 }

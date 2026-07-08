@@ -25,7 +25,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
     signals::install_signal_handler(DEFAULT_SOCKET_PATH, shutdown_tx)?;
 
-    let daemon_state = Arc::new(DaemonState::default());
+    let daemon_state = Arc::new(Mutex::new(DaemonState::default()));
     let state_clone = Arc::clone(&daemon_state);
 
     let senders = Arc::new(Mutex::new(Vec::<SyncSender<Arc<[u8]>>>::new()));
@@ -43,21 +43,25 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let mut buf = Vec::<u8>::with_capacity(8 * 1024);
 
     loop {
-        let mut stats_guard = daemon_state.stats.lock().map_err(|_| MutexPoison)?;
+        let mut state_guard = daemon_state.lock().map_err(|_| MutexPoison)?;
 
         for event in events.drain_available()? {
-            stats_guard.apply_event(event);
+            state_guard.stats.apply_event(event);
         }
 
-        stats_guard.collect_rows(&map_wrapper, &mut rows);
+        state_guard.stats.collect_rows(&map_wrapper, &mut rows);
+
+        state_guard.advance_tick();
 
         let snapshot = SnapshotRef {
-            interval: daemon_state.interval(),
-            tick: daemon_state.tick(),
+            interval: state_guard.interval(),
+            tick: state_guard.tick(),
             rows: &rows,
         };
 
-        drop(stats_guard);
+        let timeout = Duration::from_millis(state_guard.interval());
+
+        drop(state_guard);
 
         ipc::write_msg(&mut buf, &snapshot)?;
 
@@ -65,7 +69,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
         server::update_streams(&senders, &shared)?;
 
-        match shutdown_rx.recv_timeout(Duration::from_millis(daemon_state.interval())) {
+        match shutdown_rx.recv_timeout(timeout) {
             Ok(()) | Err(RecvTimeoutError::Disconnected) => return Ok(()),
             _ => {}
         }
@@ -77,7 +81,5 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
                 Err(_) => return Err(DaemonError::ThreadPanic),
             }
         }
-
-        daemon_state.advance_tick();
     }
 }

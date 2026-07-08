@@ -16,12 +16,12 @@ use crate::{
     state::DaemonState,
 };
 
-type SenderList = Mutex<Vec<SyncSender<Arc<[u8]>>>>;
+type SenderList = Vec<SyncSender<Arc<[u8]>>>;
 
 #[expect(clippy::needless_pass_by_value)]
 pub fn run_listener(
-    senders: Arc<SenderList>,
-    daemon_state: Arc<DaemonState>,
+    senders: Arc<Mutex<SenderList>>,
+    daemon_state: Arc<Mutex<DaemonState>>,
 ) -> Result<!, ListenerError> {
     let _ = std::fs::remove_file(DEFAULT_SOCKET_PATH);
 
@@ -50,9 +50,12 @@ pub fn run_listener(
                     };
 
                     if msg != DaemonCommand::Run {
-                        // NOTE: If the `stats` Mutex is poisoned, `app::run()` will discover it on
+                        // NOTE: If the Mutex is poisoned, `app::run()` will discover it on
                         // its next lock attempt and exit, so we ignore the error here.
-                        let _ = daemon_state_clone.update(msg);
+                        if let Ok(mut guard) = daemon_state_clone.lock() {
+                            guard.update(msg);
+                        }
+
                         return;
                     }
 
@@ -91,7 +94,7 @@ pub fn run_listener(
 
 // NOTE: A `sender` will be evicted on the tick following the one in which the
 // `receiver` was dropped.
-pub fn update_streams(tx: &SenderList, bytes: &Arc<[u8]>) -> Result<(), MutexPoison> {
+pub fn update_streams(tx: &Mutex<SenderList>, bytes: &Arc<[u8]>) -> Result<(), MutexPoison> {
     tx.lock()
         .map_err(|_| MutexPoison)?
         .retain(|sender| match sender.try_send(Arc::clone(bytes)) {
