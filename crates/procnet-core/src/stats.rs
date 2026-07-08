@@ -16,6 +16,14 @@ impl StatsBytes {
     pub const fn combine(&self) -> u64 {
         self.sent.saturating_add(self.recv)
     }
+
+    #[must_use]
+    pub const fn merge(self, other: Self) -> Self {
+        Self {
+            sent: self.sent.saturating_add(other.sent),
+            recv: self.recv.saturating_add(other.recv),
+        }
+    }
 }
 
 #[repr(C)]
@@ -60,13 +68,21 @@ pub struct StatsRow {
     pub name: Box<str>,
     pub tcp: StatsBytes,
     pub udp: StatsBytes,
-    total: StatsBytes,
+    tcp_cum: StatsBytes,
+    udp_cum: StatsBytes,
 }
 
 #[expect(clippy::missing_const_for_fn)]
 impl StatsRow {
     #[must_use]
-    pub fn new<T>(pid: u32, name: T, tcp: StatsBytes, udp: StatsBytes) -> Self
+    pub fn new<T>(
+        pid: u32,
+        name: T,
+        tcp: StatsBytes,
+        udp: StatsBytes,
+        tcp_cum: StatsBytes,
+        udp_cum: StatsBytes,
+    ) -> Self
     where
         T: Into<Box<str>>,
     {
@@ -75,16 +91,27 @@ impl StatsRow {
             name: name.into(),
             tcp,
             udp,
-            total: StatsBytes {
-                sent: tcp.sent.saturating_add(udp.sent),
-                recv: tcp.recv.saturating_add(udp.recv),
-            },
+            tcp_cum,
+            udp_cum,
         }
     }
 
+    /// (`tcp_cum`, `udp_cum`)
     #[must_use]
-    pub fn total(&self) -> &StatsBytes {
-        &self.total
+    pub fn cum(&self) -> (StatsBytes, StatsBytes) {
+        (self.tcp_cum, self.udp_cum)
+    }
+
+    /// Per-tick total (TCP + UDP).
+    #[must_use]
+    pub fn total(&self) -> StatsBytes {
+        self.tcp.merge(self.udp)
+    }
+
+    /// Cumulative total (TCP + UDP).
+    #[must_use]
+    pub fn total_cum(&self) -> StatsBytes {
+        self.tcp_cum.merge(self.udp_cum)
     }
 }
 
@@ -148,12 +175,16 @@ impl StatsCollector {
                 proc_info.tcp_cum = new_stats.tcp;
                 proc_info.udp_cum = new_stats.udp;
 
-                out.push(StatsRow::new(
+                let row = StatsRow::new(
                     proc_info.pid,
                     proc_info.name.clone(),
                     tcp_delta,
                     udp_delta,
-                ));
+                    proc_info.tcp_cum,
+                    proc_info.udp_cum,
+                );
+
+                out.push(row);
 
                 true
             } else {
@@ -287,9 +318,69 @@ mod tests {
                 recv: 10,
             },
             StatsBytes { sent: 20, recv: 10 },
+            StatsBytes::default(),
+            StatsBytes::default(),
         );
-        assert_eq!(row.total.sent, u64::MAX);
-        assert_eq!(row.total.recv, 10 + 10);
+        assert_eq!(row.total().sent, u64::MAX);
+        assert_eq!(row.total().recv, 10 + 10);
+    }
+
+    #[test]
+    fn stats_bytes_merge_saturates() {
+        let a = StatsBytes {
+            sent: u64::MAX,
+            recv: 10,
+        };
+
+        let b = StatsBytes { sent: 5, recv: 20 };
+
+        let merged = a.merge(b);
+
+        assert_eq!(merged.sent, u64::MAX);
+        assert_eq!(merged.recv, 30);
+    }
+
+    #[test]
+    fn collect_rows_populates_cumulative() {
+        let mut stats = StatsCollector::default();
+        stats.apply_event(ProcStartEvent {
+            pid: 7,
+            name: "vim".into(),
+        });
+
+        let tcp1 = StatsBytes {
+            sent: 100,
+            recv: 200,
+        };
+        let udp1 = StatsBytes {
+            sent: 400,
+            recv: 1000,
+        };
+
+        let map = FakeStatsMap::new(7, tcp1, udp1);
+        let mut rows = Vec::new();
+        stats.collect_rows(&map, &mut rows);
+
+        // After the first tick the cumulative counters equal the merged values.
+        assert_eq!(rows[0].tcp_cum, tcp1);
+        assert_eq!(rows[0].udp_cum, udp1);
+        assert_eq!(rows[0].total_cum(), tcp1.merge(udp1));
+
+        // Second tick: cumulative tracks the latest counters, delta is the diff.
+        let tcp2 = StatsBytes {
+            sent: 150,
+            recv: 250,
+        };
+        let udp2 = StatsBytes {
+            sent: 500,
+            recv: 1200,
+        };
+        let map2 = FakeStatsMap::new(7, tcp2, udp2);
+        stats.collect_rows(&map2, &mut rows);
+
+        assert_eq!(rows[0].tcp_cum, tcp2);
+        assert_eq!(rows[0].udp_cum, udp2);
+        assert_eq!(rows[0].total_cum(), tcp2.merge(udp2));
     }
 
     #[test]
@@ -357,7 +448,9 @@ mod tests {
                 140,
                 "librewolf",
                 StatsBytes::default(),
-                StatsBytes::default()
+                StatsBytes::default(),
+                StatsBytes::default(),
+                StatsBytes::default(),
             )
         );
 

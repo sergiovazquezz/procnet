@@ -1,6 +1,15 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::tui::state::{Action, Pane, SortKey, TuiState, Unit};
+use crate::tui::{
+    state::{Action, Pane, SortKey, TuiState, Unit},
+    view::clamp_scroll,
+};
+
+#[derive(Clone, Copy)]
+enum Direction {
+    Down,
+    Up,
+}
 
 pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> Action {
     match state.active_pane {
@@ -93,6 +102,22 @@ fn handle_command(state: &mut TuiState, key: KeyEvent) -> Action {
             state.unit_picker_cursor = state.unit.index();
             Action::Redraw
         }
+        KeyCode::Up | KeyCode::Char('k' | 'K') => {
+            move_cursor(state, Direction::Up);
+            Action::Redraw
+        }
+        KeyCode::Down | KeyCode::Char('j' | 'J') => {
+            move_cursor(state, Direction::Down);
+            Action::Redraw
+        }
+        KeyCode::Char('p' | 'P') => {
+            state.paused = !state.paused;
+            Action::Redraw
+        }
+        KeyCode::Char('d' | 'D') => {
+            state.show_detail = !state.show_detail;
+            Action::Redraw
+        }
         KeyCode::Char(d) => {
             if d == '?' || d == 'h' || d == 'H' {
                 state.active_pane = Pane::Help;
@@ -122,4 +147,29 @@ fn handle_command(state: &mut TuiState, key: KeyEvent) -> Action {
         }
         _ => Action::None,
     }
+}
+
+/// Move the cursor within the last rendered view, keeping it on screen. The
+/// cursor locks onto the PID at the new index so it tracks that process across
+/// ticks.
+fn move_cursor(state: &mut TuiState, direction: Direction) {
+    if state.view_len == 0 {
+        return;
+    }
+
+    let next = match direction {
+        Direction::Down => (state.selected + 1).min(state.view_len - 1),
+        Direction::Up => state.selected.saturating_sub(1),
+    };
+
+    let (selected, scroll_offset) = clamp_scroll(
+        next,
+        state.scroll_offset,
+        state.visible_rows,
+        state.view_len,
+    );
+
+    state.selected = selected;
+    state.scroll_offset = scroll_offset;
+    state.selected_pid = state.view_pids.get(selected).copied();
 }

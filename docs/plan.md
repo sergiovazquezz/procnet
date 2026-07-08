@@ -1,4 +1,4 @@
-# Simplified plan
+# Plan
 
 ## Distribution
 
@@ -12,18 +12,7 @@
   usage of the new process. However it does not cause any data corruption other
   than displaying incorrect data for 1 tick.
 
-## Tests
-
-- `sort_rows` (`view.rs:17`) - test each `SortKey` both dirs + the `pid`
-  tie-break.
-
 ## Features
-
-- Add new pane for each process with the protocols used and cumulative stats.
-
-- Add scrolling.
-
-- Add pause for client.
 
 ### Arguments
 

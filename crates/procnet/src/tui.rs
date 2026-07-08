@@ -32,10 +32,14 @@ impl Tui {
 
     pub fn draw(&mut self, tick: u64, interval: u64, rows: &[StatsRow]) -> Result<(), TuiError> {
         self.terminal
-            .draw(|frame| view::render(frame, tick, interval, rows, &self.state))
+            .draw(|frame| view::render(frame, tick, interval, rows, &mut self.state))
             .map_err(TuiError::Draw)?;
 
         Ok(())
+    }
+
+    pub const fn is_paused(&self) -> bool {
+        self.state.paused
     }
 
     pub fn handle_event(&mut self, timeout: Duration) -> Result<Action, TuiError> {

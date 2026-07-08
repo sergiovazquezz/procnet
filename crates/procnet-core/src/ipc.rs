@@ -125,6 +125,8 @@ mod tests {
                 sent: 2048,
                 recv: 4096,
             },
+            StatsBytes::default(),
+            StatsBytes::default(),
         )]
     }
 

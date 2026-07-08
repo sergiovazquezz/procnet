@@ -62,9 +62,11 @@ fn main() -> Result<(), ClientError> {
         loop {
             match snap_rx.try_recv() {
                 Ok(snap) => {
-                    tick = snap.tick;
-                    interval = snap.interval;
-                    rows = snap.rows;
+                    if !tui.is_paused() {
+                        tick = snap.tick;
+                        interval = snap.interval;
+                        rows = snap.rows;
+                    }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => match join_handle.join() {

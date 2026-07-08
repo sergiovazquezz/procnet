@@ -164,15 +164,49 @@ pub enum Pane {
 
 pub struct TuiState {
     pub sort_key: SortKey,
+
     pub sort_dir: SortDir,
+
     pub active_pane: Pane,
+
     pub filter_target: FilterTarget,
-    /// Committed filter; empty string means no filtering.
+
+    /// Committed filter. Empty string means no filtering.
     pub filter_text: String,
-    /// Display unit for byte counts.
+
+    /// Display unit for data.
     pub unit: Unit,
+
     /// Cursor row inside the unit picker (index into `Unit::ALL`).
     pub unit_picker_cursor: usize,
+
+    /// PID of the row the cursor is locked onto. `None` means the cursor
+    /// floats on the top row. It does not track a specific process until the
+    /// user moves it.
+    pub selected_pid: Option<u32>,
+
+    /// Resolved index of the cursor in the last rendered view. Written by
+    /// `render_table`, read by the input handler to move up/down.
+    pub selected: usize,
+
+    /// First visible row index into the filtered+sorted view.
+    pub scroll_offset: usize,
+
+    /// PIDs of the current filtered+sorted view, refreshed each render so the
+    /// input handler can move the cursor without access to the snapshot.
+    pub view_pids: Vec<u32>,
+
+    /// Length of the filtered+sorted view at the last render.
+    pub view_len: usize,
+
+    /// How many table rows fit in the area at the last render.
+    pub visible_rows: u16,
+
+    /// Whether the live snapshot feed is frozen.
+    pub paused: bool,
+
+    /// Whether the per-process detail pane is shown.
+    pub show_detail: bool,
 }
 
 impl Default for TuiState {
@@ -191,6 +225,14 @@ impl TuiState {
             filter_text: String::new(),
             unit: Unit::Auto,
             unit_picker_cursor: Unit::Auto.index(),
+            selected_pid: None,
+            selected: 0,
+            scroll_offset: 0,
+            view_pids: Vec::new(),
+            view_len: 0,
+            visible_rows: 0,
+            paused: false,
+            show_detail: false,
         }
     }
 }
