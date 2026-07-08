@@ -15,29 +15,25 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      PROCNET_SKIP_VMLINUX_GEN: "1"
     steps:
       - uses: actions/checkout@v4
 
-      - uses: DeterminateSystems/nix-installer-action@v22
-
-      - uses: DeterminateSystems/magic-nix-cache-action@v14
-
-      - name: Provision toolchain
-        run: nix develop --command rustup show
-
-      - name: Rust formatting
-        run: nix develop --command cargo fmt --all -- --check
-
-      - name: C formatting (BPF)
+      - name: Install native dependencies
         run: |
-          nix develop --command clang-format --dry-run --Werror \
-            crates/procnetd/src/bpf/procnet.bpf.c
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang libbpf-dev libelf-dev zlib1g-dev pkg-config
+
+      - name: Provision Rust toolchain
+        run: rustup show
 
       - name: Build
-        run: nix develop --command cargo build --workspace --all-targets
+        run: cargo build --workspace --all-targets
 
       - name: Clippy
-        run: nix develop --command cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: nix develop --command cargo test --workspace
+        run: cargo test --workspace

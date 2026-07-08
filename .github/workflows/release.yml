@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb-tar:
+    runs-on: ubuntu-latest
+    env:
+      PROCNET_SKIP_VMLINUX_GEN: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang libbpf-dev libelf-dev zlib1g-dev pkg-config
+
+      - name: Provision Rust toolchain
+        run: rustup show
+
+      - name: Build release binaries
+        run: cargo build --release
+
+      - name: Set version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install nfpm
+        run: |
+          set -euo pipefail
+          nfpm_version="2.47.0"
+          curl -fsSL -o /tmp/nfpm.tar.gz \
+            "https://github.com/goreleaser/nfpm/releases/download/v${nfpm_version}/nfpm_${nfpm_version}_Linux_x86_64.tar.gz"
+          sudo tar -xzf /tmp/nfpm.tar.gz -C /usr/local/bin nfpm
+          nfpm --version
+
+      - name: Build .deb
+        env:
+          PROCNET_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          nfpm package -p deb -t dist/ -f packaging/nfpm.yaml
+
+      - name: Build .tar.gz
+        env:
+          PROCNET_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ver="$PROCNET_VERSION"
+          staging="procnet-${ver}-x86_64-linux"
+          mkdir -p "$staging"
+          install -m 0755 target/release/procnetd "$staging/procnetd"
+          install -m 0755 target/release/procnet  "$staging/procnet"
+          install -m 0644 packaging/procnetd-system.service "$staging/procnetd.service"
+          install -m 0644 README.md    "$staging/README.md"
+          install -m 0644 LICENSE-GPL2 "$staging/LICENSE-GPL2"
+          mkdir -p dist
+          tar -czf "dist/${staging}.tar.gz" "$staging"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-deb-tar
+          path: dist/*
+          if-no-files-found: error
+
+  build-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    env:
+      PROCNET_SKIP_VMLINUX_GEN: "1"
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            clang gcc git libbpf-devel elfutils-libelf-devel zlib-devel \
+            pkgconf-pkg-config curl tar
+
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (rustup)
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          source "$HOME/.cargo/env"
+          rustup show
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build release binaries
+        run: cargo build --release
+
+      - name: Set version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install nfpm
+        run: |
+          set -euo pipefail
+          nfpm_version="2.47.0"
+          curl -fsSL -o /tmp/nfpm.tar.gz \
+            "https://github.com/goreleaser/nfpm/releases/download/v${nfpm_version}/nfpm_${nfpm_version}_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/nfpm.tar.gz -C /usr/local/bin nfpm
+          nfpm --version
+
+      - name: Build .rpm
+        env:
+          PROCNET_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          nfpm package -p rpm -t dist/ -f packaging/nfpm.yaml
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-rpm
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: [build-deb-tar, build-rpm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
