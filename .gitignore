@@ -3,7 +3,6 @@
 
 # libbpf
 *.skel.rs
-crates/procnetd/src/bpf/vmlinux.h
 
 .direnv/
 

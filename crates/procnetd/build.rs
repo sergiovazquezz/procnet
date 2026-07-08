@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used)]
+#![expect(clippy::expect_used, clippy::panic)]
 
 use std::{env, fs, path::PathBuf, process::Command};
 
@@ -34,6 +34,25 @@ fn main() {
 }
 
 fn generate_vmlinux_header() {
+    let manifest_dir =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set"));
+    let vmlinux_h = manifest_dir.join("src/bpf/vmlinux.h");
+    let btf_path = PathBuf::from("/sys/kernel/btf/vmlinux");
+
+    let skip = env::var_os("PROCNET_SKIP_VMLINUX_GEN").is_some_and(|v| v != "0");
+
+    if skip || !btf_path.exists() {
+        if vmlinux_h.exists() {
+            return;
+        }
+        panic!(
+            "procnetd build: vmlinux.h is missing and /sys/kernel/btf/vmlinux is unavailable \
+             (or PROCNET_SKIP_VMLINUX_GEN is set). On a Linux host with BTF, regenerate it with:\n  \
+             bpftool btf dump file /sys/kernel/btf/vmlinux format c > crates/procnetd/src/bpf/vmlinux.h\n\
+             then commit it."
+        );
+    }
+
     let output = Command::new("bpftool")
         .args([
             "btf",
@@ -52,10 +71,6 @@ fn generate_vmlinux_header() {
         output.status,
         String::from_utf8_lossy(&output.stderr)
     );
-
-    let manifest_dir =
-        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set"));
-    let vmlinux_h = manifest_dir.join("src/bpf/vmlinux.h");
 
     fs::write(&vmlinux_h, output.stdout).expect("Failed to write vmlinux.h");
 }
