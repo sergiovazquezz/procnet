@@ -100,13 +100,6 @@
           };
         };
 
-      procnet-unit =
-        pkgs: wrapperDir:
-        pkgs.runCommandLocal "procnetd.service" { } ''
-          substitute ${./packaging/procnetd.service} $out \
-            --replace-fail "%h/.local/bin/procnetd" "${wrapperDir}/procnetd"
-        '';
-
       nixosModule =
         {
           pkgs,
@@ -129,14 +122,21 @@
               source = "${pkg}/bin/procnetd";
               owner = "root";
               group = "root";
-              capabilities = "cap_bpf,cap_perfmon,cap_sys_resource";
+              capabilities = "cap_bpf,cap_perfmon,cap_sys_resource+ep";
             };
 
-            environment.etc."systemd/user/procnetd.service".source =
-              procnet-unit nixpkgsFor.${system}
-                config.security.wrapperDir;
-
-            systemd.user.services.procnetd.wantedBy = [ "default.target" ];
+            systemd.user.services.procnetd = {
+              description = "Procnet eBPF network-usage daemon";
+              documentation = [ "https://github.com/sergiovazquezz/procnet" ];
+              after = [ "network.target" ];
+              wantedBy = [ "default.target" ];
+              serviceConfig = {
+                Type = "simple";
+                ExecStart = "${config.security.wrapperDir}/procnetd";
+                StandardOutput = "journal";
+                StandardError = "journal";
+              };
+            };
           };
         };
     in
