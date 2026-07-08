@@ -1,6 +1,7 @@
 use std::{
     io::{self, BufRead, Read},
     os::unix::net::UnixStream,
+    path::PathBuf,
 };
 
 use clap::{Subcommand, value_parser};
@@ -11,7 +12,17 @@ use crate::{
     stats::StatsRow,
 };
 
-pub const DEFAULT_SOCKET_PATH: &str = "/tmp/procnetd.sock";
+/// Resolves the path of the Unix domain socket used to talk to the daemon.
+///
+/// Prefers `$XDG_RUNTIME_DIR/procnetd.sock`, and falls back to
+/// `/tmp/procnetd.sock` when `XDG_RUNTIME_DIR` is not set.
+#[must_use]
+pub fn socket_path() -> PathBuf {
+    match std::env::var_os("XDG_RUNTIME_DIR") {
+        Some(dir) if !dir.is_empty() => PathBuf::from(dir).join("procnetd.sock"),
+        _ => PathBuf::from("/tmp/procnetd.sock"),
+    }
+}
 
 /// Length of prefix used to frame each `bincode` message.
 const PREFIX_LEN: usize = 2;
@@ -45,7 +56,8 @@ pub struct SnapshotRef<'a> {
 }
 
 pub fn connect_to_socket() -> Result<UnixStream, ConnectError> {
-    let stream = UnixStream::connect(DEFAULT_SOCKET_PATH)?;
+    let path = socket_path();
+    let stream = UnixStream::connect(&path).map_err(|e| ConnectError::new(path, e))?;
     Ok(stream)
 }
 

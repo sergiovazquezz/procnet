@@ -21,8 +21,6 @@
 
 ## Features
 
-- Add systemd service.
-
 - Add new pane for each process with the protocols used and cumulative stats.
 
 - Add scrolling.

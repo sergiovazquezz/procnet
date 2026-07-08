@@ -1,6 +1,7 @@
 .PHONY: lint test clear-logs build-release run-release run-daemon run-client \
 	build-profile run-profile run-daemon-profile run-client-profile \
-	stats record flamegraph heaptrack clean install-caps verify-caps
+	stats record flamegraph heaptrack clean install-caps verify-caps \
+	install uninstall
 
 
 PID_FILE        := /tmp/procnetd.pid
@@ -59,6 +60,14 @@ install-caps: build-release
 verify-caps: build-release
 	@getcap $(DAEMON_RELEASE) | grep -q 'cap_sys_resource,cap_perfmon,cap_bpf=ep' \
 	&& echo "" && echo "Success: caps are installed" || $(MAKE) install-caps
+
+
+# Service
+install: build-release
+	./scripts/install-service.sh
+
+uninstall:
+	./scripts/uninstall-service.sh
 
 
 # Cleanup

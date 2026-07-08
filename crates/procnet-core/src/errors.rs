@@ -1,12 +1,23 @@
-use std::io;
+use std::{io, path::PathBuf};
 
 use thiserror::Error;
 
-use crate::ipc::DEFAULT_SOCKET_PATH;
-
 #[derive(Error, Debug)]
-#[error("Failed to connect to socket at {DEFAULT_SOCKET_PATH}: {0}\nHint: is the daemon running?")]
-pub struct ConnectError(#[from] io::Error);
+#[error("Failed to connect to socket at {}: {source}\nHint: is the daemon running?", path.display())]
+pub struct ConnectError {
+    path: PathBuf,
+    source: io::Error,
+}
+
+impl ConnectError {
+    #[must_use]
+    pub fn new(path: impl Into<PathBuf>, source: io::Error) -> Self {
+        Self {
+            path: path.into(),
+            source,
+        }
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum MsgSendError {
