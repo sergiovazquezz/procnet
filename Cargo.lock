@@ -1366,6 +1366,7 @@ dependencies = [
  "libbpf-rs",
  "libc",
  "log",
+ "nix 0.31.3",
  "procnet-core",
  "thiserror 2.0.18",
 ]

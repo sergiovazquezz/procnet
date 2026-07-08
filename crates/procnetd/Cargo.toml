@@ -13,6 +13,7 @@ env_logger = "0.11.11"
 log = { workspace = true }
 libc = "0.2.183"
 libbpf-rs = "0.26.0"
+nix = { version = "0.31.3", features = ["signal"] }
 procnet-core = { path = "../procnet-core" }
 thiserror = { workspace = true }
 

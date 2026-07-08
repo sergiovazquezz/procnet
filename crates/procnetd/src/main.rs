@@ -5,6 +5,9 @@ use std::mem::MaybeUninit;
 use env_logger::Env;
 use libbpf_rs::skel::{OpenSkel, Skel, SkelBuilder};
 
+use procnet::ProcnetSkelBuilder;
+use procnet_core::ipc::DEFAULT_SOCKET_PATH;
+
 #[allow(
     warnings,
     clippy::all,
@@ -17,12 +20,11 @@ mod procnet {
     include!(concat!(env!("OUT_DIR"), "/procnet.skel.rs"));
 }
 
-use procnet::ProcnetSkelBuilder;
-
 mod app;
 mod errors;
 mod events;
 mod server;
+mod signals;
 mod state;
 mod stats_map;
 
@@ -41,6 +43,8 @@ fn main() -> anyhow::Result<()> {
 
     let stats_map = &skel.maps.STATS;
     let events_map = &skel.maps.EVENTS;
+
+    signals::install_signal_handler(DEFAULT_SOCKET_PATH)?;
 
     app::run(stats_map, events_map)?;
 

@@ -15,6 +15,8 @@ pub enum DaemonError {
     Serialize(#[from] MsgSendError),
     #[error("Listener thread exited unexpectedly (likely panic)")]
     ThreadPanic,
+    #[error("Failed to install signal mask: {0}")]
+    SignalMask(#[from] nix::Error),
 }
 
 #[derive(Error, Debug)]

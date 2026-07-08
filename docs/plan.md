@@ -9,12 +9,6 @@
 
 ## Known quirks
 
-- Remove socket file on `SIGINT`/`SIGTERM`, use `nix` crate:
-
-    ```rust
-    fs::remove_file(socket)
-    ```
-
 - If a process exits and its PID is reused before its entry is removed from
   `StatsCollector`, for a tick the old name could be used to show the network
   usage of the new process. However it does not cause any data corruption other
