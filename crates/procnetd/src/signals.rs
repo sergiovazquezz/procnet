@@ -17,17 +17,17 @@ pub fn install_signal_handler(
     mask.add(Signal::SIGINT);
     mask.add(Signal::SIGTERM);
 
-    // Block process-wide; inherited by future threads.
+    // Block process-wide, inherited by future threads.
     mask.thread_block()?;
 
     thread::spawn(move || {
         loop {
             match mask.wait() {
                 Ok(sig) => {
-                    log::info!("received {sig}, removing socket and exiting");
+                    log::info!("Received {sig}, removing socket and exiting");
 
                     if let Err(e) = fs::remove_file(&socket_path) {
-                        log::warn!("failed to remove socket {}: {e}", socket_path.display());
+                        log::warn!("Failed to remove socket {}: {e}", socket_path.display());
                     }
 
                     let _ = shutdown_tx.send(());
@@ -35,7 +35,7 @@ pub fn install_signal_handler(
                     break;
                 }
                 Err(e) => {
-                    log::error!("sigwait failed: {e}; signal handler thread retrying");
+                    log::error!("Sigwait failed, signal handler thread retrying: {e}");
                 }
             }
         }

@@ -1,0 +1,2 @@
+crates/procnetd/src/bpf/vmlinux.h linguist-generated=true
+crates/procnetd/src/bpf/procnet.skel.rs linguist-generated=true

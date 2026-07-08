@@ -14,7 +14,7 @@
 
 ## Tests
 
-- `sort_rows` (`view.rs:17`) — test each `SortKey` both dirs + the `pid`
+- `sort_rows` (`view.rs:17`) - test each `SortKey` both dirs + the `pid`
   tie-break.
 
 ## Features
