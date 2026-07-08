@@ -1,24 +1,30 @@
 use std::{
-    sync::{Arc, Mutex, mpsc::SyncSender},
+    sync::{
+        Arc, Mutex,
+        mpsc::{self, RecvTimeoutError, SyncSender},
+    },
     thread,
     time::Duration,
 };
 
 use libbpf_rs::MapMut;
 use procnet_core::{
-    ipc::{self, SnapshotRef},
+    ipc::{self, DEFAULT_SOCKET_PATH, SnapshotRef},
     stats::{MAP_SIZE, StatsRow},
 };
 
 use crate::{
     errors::{DaemonError, MutexPoison},
     events::EventReader,
-    server,
+    server, signals,
     state::DaemonState,
     stats_map::MapMutWrapper,
 };
 
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
+    let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
+    signals::install_signal_handler(DEFAULT_SOCKET_PATH, shutdown_tx)?;
+
     let daemon_state = Arc::new(DaemonState::default());
     let state_clone = Arc::clone(&daemon_state);
 
@@ -59,7 +65,10 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
 
         server::update_streams(&senders, &shared)?;
 
-        thread::sleep(Duration::from_millis(daemon_state.interval()));
+        match shutdown_rx.recv_timeout(Duration::from_millis(daemon_state.interval())) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return Ok(()),
+            _ => {}
+        }
 
         if listener_handle.is_finished() {
             match listener_handle.join() {
