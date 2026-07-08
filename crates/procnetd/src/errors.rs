@@ -31,6 +31,8 @@ pub enum EventError {
 pub enum ListenerError {
     #[error("Failed to bind {}: {source}", path.display())]
     Bind { path: PathBuf, source: io::Error },
+    #[error("Another procnetd is already listening on {}", path.display())]
+    InUse { path: PathBuf },
 }
 
 #[derive(Error, Debug)]

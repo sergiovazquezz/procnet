@@ -23,7 +23,14 @@ use crate::{
 
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
-    signals::install_signal_handler(ipc::socket_path(), shutdown_tx)?;
+
+    let socket_path = ipc::socket_path();
+
+    let listener = server::bind_unix_listener(&socket_path)?;
+
+    log::info!("Listening on {}", socket_path.display());
+
+    signals::install_signal_handler(socket_path, shutdown_tx)?;
 
     let daemon_state = Arc::new(Mutex::new(DaemonState::default()));
     let state_clone = Arc::clone(&daemon_state);
@@ -32,7 +39,7 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let listener_senders = Arc::clone(&senders);
 
     let listener_handle =
-        thread::spawn(move || server::run_listener(listener_senders, state_clone));
+        thread::spawn(move || server::accept_loop(listener, listener_senders, state_clone));
 
     let events = EventReader::new(events_map)?;
 
