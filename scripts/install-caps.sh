@@ -38,5 +38,4 @@ if [[ "$paranoid" -gt 2 ]] 2>/dev/null; then
     echo "      The daemon may still need root or a lower value." >&2
 fi
 
-echo "Caps installed. You can now run the daemon as your normal user:"
-echo "      make run-daemon"
+echo "Caps installed. You can now run the daemon as your normal user."

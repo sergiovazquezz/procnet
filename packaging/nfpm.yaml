@@ -1,0 +1,36 @@
+name: procnet
+arch: amd64
+platform: linux
+version: ${PROCNET_VERSION}
+section: net
+priority: optional
+maintainer: 37551777+sergiovazquezz@users.noreply.github.com
+description: TUI for attributing network usage to processes via eBPF.
+homepage: https://github.com/sergiovazquezz/procnet
+license: GPL-2.0
+
+contents:
+  - src: target/release/procnetd
+    dst: /usr/bin/procnetd
+    file_info:
+      mode: 0755
+  - src: target/release/procnet
+    dst: /usr/bin/procnet
+    file_info:
+      mode: 0755
+  - src: packaging/procnetd-system.service
+    dst: /usr/lib/systemd/system/procnetd.service
+    file_info:
+      mode: 0644
+
+overrides:
+  deb:
+    depends:
+      - libbpf1
+      - libelf1
+      - zlib1g
+  rpm:
+    depends:
+      - libbpf
+      - elfutils-libelf
+      - zlib

@@ -2,8 +2,6 @@
 
 ## Distribution
 
-- Binary for Ubuntu and Debian.
-- Nix flake.
 - Nix and Arch packages.
 - AppImage?
 

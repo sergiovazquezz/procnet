@@ -1,6 +1,6 @@
 .PHONY: lint test clear-logs build-release run-release run-daemon run-client \
 	build-profile run-profile run-daemon-profile run-client-profile \
-	stats record flamegraph heaptrack clean install-caps verify-caps \
+	stats record flamegraph heaptrack clean install-caps \
 	install uninstall
 
 
@@ -23,7 +23,7 @@ test:
 build-release:
 	cargo build --release
 
-run-daemon: build-release verify-caps clear-logs
+run-daemon: build-release install-caps clear-logs
 	$(DAEMON_RELEASE)
 
 run-client: build-release
@@ -55,27 +55,23 @@ heaptrack: build-profile clear-logs
 
 # Caps
 install-caps: build-release
-	./scripts/install-caps.sh $(DAEMON_RELEASE)
-
-verify-caps: build-release
-	@getcap $(DAEMON_RELEASE) | grep -q 'cap_sys_resource,cap_perfmon,cap_bpf=ep' \
-	&& echo "" && echo "Success: caps are installed" || $(MAKE) install-caps
+	@./scripts/install-caps.sh $(DAEMON_RELEASE)
 
 
 # Service
 install: build-release
-	./scripts/install-service.sh
+	@./scripts/install-service.sh
 
 uninstall:
-	./scripts/uninstall-service.sh
+	@./scripts/uninstall-service.sh
 
 
 # Cleanup
 clear-logs:
-	mkdir -p logs
-	-rm -f logs/app.log
+	@mkdir -p logs
+	@-rm -f logs/app.log
 
 clean:
 	cargo clean
-	rm -f perf.data perf.data.old flamegraph.svg
-	rm -rf logs
+	@rm -f perf.data perf.data.old flamegraph.svg
+	@rm -rf logs
