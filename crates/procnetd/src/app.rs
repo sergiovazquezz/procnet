@@ -9,7 +9,7 @@ use std::{
 
 use libbpf_rs::MapMut;
 use procnet_core::{
-    ipc::{self, DEFAULT_SOCKET_PATH, SnapshotRef},
+    ipc::{self, SnapshotRef},
     stats::{MAP_SIZE, StatsRow},
 };
 
@@ -23,7 +23,7 @@ use crate::{
 
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
-    signals::install_signal_handler(DEFAULT_SOCKET_PATH, shutdown_tx)?;
+    signals::install_signal_handler(ipc::socket_path(), shutdown_tx)?;
 
     let daemon_state = Arc::new(Mutex::new(DaemonState::default()));
     let state_clone = Arc::clone(&daemon_state);

@@ -1,4 +1,4 @@
-use std::{fs, sync::mpsc::Sender, thread};
+use std::{fs, path::PathBuf, sync::mpsc::Sender, thread};
 
 use nix::sys::signal::{SigSet, Signal};
 
@@ -10,7 +10,7 @@ use nix::sys::signal::{SigSet, Signal};
 /// by all child threads. That guarantees `sigwait` in the spawned thread is the
 /// sole delivery point for these signals.
 pub fn install_signal_handler(
-    socket_path: &'static str,
+    socket_path: PathBuf,
     shutdown_tx: Sender<()>,
 ) -> Result<(), nix::Error> {
     let mut mask = SigSet::empty();
@@ -26,8 +26,8 @@ pub fn install_signal_handler(
                 Ok(sig) => {
                     log::info!("received {sig}, removing socket and exiting");
 
-                    if let Err(e) = fs::remove_file(socket_path) {
-                        log::warn!("failed to remove socket {socket_path}: {e}");
+                    if let Err(e) = fs::remove_file(&socket_path) {
+                        log::warn!("failed to remove socket {}: {e}", socket_path.display());
                     }
 
                     let _ = shutdown_tx.send(());

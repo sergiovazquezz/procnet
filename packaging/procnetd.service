@@ -1,0 +1,15 @@
+[Unit]
+Description=Procnet eBPF network-usage daemon
+Documentation=https://github.com/sergiovazquezz/procnet
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/procnetd
+Restart=on-failure
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

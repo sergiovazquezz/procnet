@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use procnet_core::ipc::{self, DEFAULT_SOCKET_PATH, DaemonCommand};
+use procnet_core::ipc::{self, DaemonCommand};
 
 use crate::{
     errors::{ListenerError, MutexPoison},
@@ -23,9 +23,14 @@ pub fn run_listener(
     senders: Arc<Mutex<SenderList>>,
     daemon_state: Arc<Mutex<DaemonState>>,
 ) -> Result<!, ListenerError> {
-    let _ = std::fs::remove_file(DEFAULT_SOCKET_PATH);
+    let socket_path = ipc::socket_path();
 
-    let listener = UnixListener::bind(DEFAULT_SOCKET_PATH)?;
+    let _ = std::fs::remove_file(&socket_path);
+
+    let listener = UnixListener::bind(&socket_path).map_err(|source| ListenerError::Bind {
+        path: socket_path,
+        source,
+    })?;
 
     for stream in listener.incoming() {
         match stream {

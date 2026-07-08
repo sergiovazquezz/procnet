@@ -1,6 +1,6 @@
-use std::io;
+use std::{io, path::PathBuf};
 
-use procnet_core::{errors::MsgSendError, ipc::DEFAULT_SOCKET_PATH};
+use procnet_core::errors::MsgSendError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -29,8 +29,8 @@ pub enum EventError {
 
 #[derive(Error, Debug)]
 pub enum ListenerError {
-    #[error("Failed to bind {DEFAULT_SOCKET_PATH}: {0}")]
-    Bind(#[from] io::Error),
+    #[error("Failed to bind {}: {source}", path.display())]
+    Bind { path: PathBuf, source: io::Error },
 }
 
 #[derive(Error, Debug)]
