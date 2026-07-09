@@ -203,9 +203,6 @@ pub struct TuiState {
     /// input handler can move the cursor without access to the snapshot.
     pub view_pids: Vec<u32>,
 
-    /// Length of the filtered+sorted view at the last render.
-    pub view_len: usize,
-
     /// How many table rows fit in the area at the last render.
     pub visible_rows: u16,
 
@@ -237,7 +234,6 @@ impl TuiState {
             scroll_offset: 0,
             view: Vec::with_capacity(MAP_SIZE),
             view_pids: Vec::new(),
-            view_len: 0,
             visible_rows: 0,
             paused: false,
             show_detail: false,

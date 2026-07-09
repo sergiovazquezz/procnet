@@ -153,21 +153,18 @@ fn handle_command(state: &mut TuiState, key: KeyEvent) -> Action {
 /// cursor locks onto the PID at the new index so it tracks that process across
 /// ticks.
 fn move_cursor(state: &mut TuiState, direction: Direction) {
-    if state.view_len == 0 {
+    let view_len = state.view.len();
+    if view_len == 0 {
         return;
     }
 
     let next = match direction {
-        Direction::Down => (state.selected + 1).min(state.view_len - 1),
+        Direction::Down => (state.selected + 1).min(view_len - 1),
         Direction::Up => state.selected.saturating_sub(1),
     };
 
-    let (selected, scroll_offset) = clamp_scroll(
-        next,
-        state.scroll_offset,
-        state.visible_rows,
-        state.view_len,
-    );
+    let (selected, scroll_offset) =
+        clamp_scroll(next, state.scroll_offset, state.visible_rows, view_len);
 
     state.selected = selected;
     state.scroll_offset = scroll_offset;

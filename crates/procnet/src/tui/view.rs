@@ -121,7 +121,6 @@ pub fn render(frame: &mut Frame, snap: &SnapshotData, state: &mut TuiState) {
 
 fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut TuiState) {
     if snap.rows.is_empty() {
-        state.view_len = 0;
         state.visible_rows = 0;
         state.view_pids.clear();
         frame.render_widget(
@@ -132,10 +131,7 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         return;
     }
 
-    let view_len = state.view.len();
-
-    if view_len == 0 {
-        state.view_len = 0;
+    if state.view.is_empty() {
         state.visible_rows = 0;
         state.view_pids.clear();
 
@@ -163,8 +159,12 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         .unwrap_or((0, None));
 
     let visible_rows = area.height.saturating_sub(3);
-    let (selected, scroll_offset) =
-        clamp_scroll(selected, state.scroll_offset, visible_rows, view_len);
+    let (selected, scroll_offset) = clamp_scroll(
+        selected,
+        state.scroll_offset,
+        visible_rows,
+        state.view.len(),
+    );
 
     let max_total = state
         .view
@@ -175,7 +175,6 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
 
     state.selected = selected;
     state.scroll_offset = scroll_offset;
-    state.view_len = view_len;
     state.visible_rows = visible_rows;
     state.view_pids.clear();
     state
