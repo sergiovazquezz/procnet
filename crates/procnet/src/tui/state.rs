@@ -1,3 +1,5 @@
+use procnet_core::stats::MAP_SIZE;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SortKey {
     Pid,
@@ -192,6 +194,11 @@ pub struct TuiState {
     /// First visible row index into the filtered+sorted view.
     pub scroll_offset: usize,
 
+    /// Indices into the most recent `snap.rows` forming the filtered+sorted
+    /// view. Reused across renders via clear+extend to avoid per-frame
+    /// allocation.
+    pub view: Vec<usize>,
+
     /// PIDs of the current filtered+sorted view, refreshed each render so the
     /// input handler can move the cursor without access to the snapshot.
     pub view_pids: Vec<u32>,
@@ -228,6 +235,7 @@ impl TuiState {
             selected_pid: None,
             selected: 0,
             scroll_offset: 0,
+            view: Vec::with_capacity(MAP_SIZE),
             view_pids: Vec::new(),
             view_len: 0,
             visible_rows: 0,

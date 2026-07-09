@@ -6,10 +6,7 @@ use std::{
 };
 
 use clap::Parser;
-use procnet_core::{
-    ipc::{self, DaemonCommand, SnapshotData},
-    stats::{MAP_SIZE, StatsRow},
-};
+use procnet_core::ipc::{self, DaemonCommand, SnapshotData};
 
 use crate::{
     cli::{Cli, Command},
@@ -36,10 +33,7 @@ fn main() -> Result<(), ClientError> {
 
     let (snap_tx, snap_rx) = mpsc::channel::<SnapshotData>();
 
-    let mut rows = Vec::<StatsRow>::with_capacity(MAP_SIZE);
-
-    let mut tick: u64 = 0;
-    let mut interval: u64 = 0;
+    let mut snap = SnapshotData::default();
 
     let mut tui = Tui::new();
 
@@ -61,11 +55,9 @@ fn main() -> Result<(), ClientError> {
     loop {
         loop {
             match snap_rx.try_recv() {
-                Ok(snap) => {
+                Ok(new_snap) => {
                     if !tui.is_paused() {
-                        tick = snap.tick;
-                        interval = snap.interval;
-                        rows = snap.rows;
+                        snap = new_snap;
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -76,11 +68,11 @@ fn main() -> Result<(), ClientError> {
             }
         }
 
-        tui.draw(tick, interval, &rows)?;
+        tui.draw(&snap)?;
 
         match tui.handle_event(Duration::from_millis(250))? {
             Action::Quit => break,
-            Action::Redraw => tui.draw(tick, interval, &rows)?,
+            Action::Redraw => tui.draw(&snap)?,
             Action::None => {}
         }
     }

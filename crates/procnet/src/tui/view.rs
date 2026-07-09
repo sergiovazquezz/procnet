@@ -6,21 +6,25 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
-use procnet_core::stats::{StatsBytes, StatsRow};
+use procnet_core::{
+    ipc::SnapshotData,
+    stats::{StatsBytes, StatsRow},
+};
 
 use crate::tui::{
     state::{FilterTarget, Pane, SortDir, SortKey, TuiState, Unit},
     theme,
 };
 
-pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
-    rows.sort_by(|&a, &b| {
+pub fn sort_rows(rows: &[StatsRow], indices: &mut [usize], key: SortKey, dir: SortDir) {
+    indices.sort_by(|&a, &b| {
+        let (ra, rb) = (&rows[a], &rows[b]);
         let primary = match key {
-            SortKey::Pid => a.pid.cmp(&b.pid),
-            SortKey::Name => a.name.cmp(&b.name),
-            SortKey::Sent => a.total().sent.cmp(&b.total().sent),
-            SortKey::Recv => a.total().recv.cmp(&b.total().recv),
-            SortKey::Total => a.total().combine().cmp(&b.total().combine()),
+            SortKey::Pid => ra.pid.cmp(&rb.pid),
+            SortKey::Name => ra.name.cmp(&rb.name),
+            SortKey::Sent => ra.total().sent.cmp(&rb.total().sent),
+            SortKey::Recv => ra.total().recv.cmp(&rb.total().recv),
+            SortKey::Total => ra.total().combine().cmp(&rb.total().combine()),
         };
 
         let primary = if dir == SortDir::Desc {
@@ -29,7 +33,7 @@ pub fn sort_rows(rows: &mut [&StatsRow], key: SortKey, dir: SortDir) {
             primary
         };
 
-        primary.then_with(|| a.pid.cmp(&b.pid))
+        primary.then_with(|| ra.pid.cmp(&rb.pid))
     });
 }
 
@@ -65,27 +69,26 @@ pub fn clamp_scroll(
     (selected, offset)
 }
 
-pub fn render(
-    frame: &mut Frame,
-    tick: u64,
-    interval: u64,
-    rows: &[StatsRow],
-    state: &mut TuiState,
-) {
-    // Build the filtered + sorted view once.
-    let mut view: Vec<&StatsRow> = Vec::with_capacity(rows.len());
-    if !rows.is_empty() {
+pub fn render(frame: &mut Frame, snap: &SnapshotData, state: &mut TuiState) {
+    state.view.clear();
+    if !snap.rows.is_empty() {
         if state.filter_text.is_empty() {
-            view.extend(rows.iter());
+            state.view.extend(0..snap.rows.len());
         } else {
             let needle = state.filter_text.to_ascii_lowercase();
-            view.extend(rows.iter().filter(|row| match state.filter_target {
-                FilterTarget::Name => row.name.contains(&needle),
-                FilterTarget::Pid => row.pid.to_string().contains(&needle),
-            }));
+            let filt = state.filter_target;
+            state.view.extend(
+                snap.rows
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, row)| match filt {
+                        FilterTarget::Name => row.name.contains(&needle).then_some(i),
+                        FilterTarget::Pid => row.pid.to_string().contains(&needle).then_some(i),
+                    }),
+            );
         }
 
-        sort_rows(&mut view, state.sort_key, state.sort_dir);
+        sort_rows(&snap.rows, &mut state.view, state.sort_key, state.sort_dir);
     }
 
     let mut constraints = vec![Constraint::Min(1)];
@@ -99,10 +102,10 @@ pub fn render(
     let layout = Layout::vertical(constraints).split(frame.area());
 
     let mut idx = 0;
-    render_table(frame, layout[idx], tick, interval, rows, &view, state);
+    render_table(frame, layout[idx], snap, state);
     idx += 1;
     if state.show_detail {
-        render_detail(frame, layout[idx], &view, state);
+        render_detail(frame, layout[idx], snap, state);
         idx += 1;
     }
     render_keybind_bar(frame, layout[idx], state);
@@ -116,16 +119,9 @@ pub fn render(
     }
 }
 
-fn render_table(
-    frame: &mut Frame,
-    area: Rect,
-    tick: u64,
-    interval: u64,
-    rows: &[StatsRow],
-    view: &[&StatsRow],
-    state: &mut TuiState,
-) {
-    if rows.is_empty() {
+#[expect(clippy::too_many_lines)]
+fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut TuiState) {
+    if snap.rows.is_empty() {
         state.view_len = 0;
         state.visible_rows = 0;
         state.view_pids.clear();
@@ -137,7 +133,7 @@ fn render_table(
         return;
     }
 
-    let view_len = view.len();
+    let view_len = state.view.len();
 
     if view_len == 0 {
         state.view_len = 0;
@@ -157,8 +153,10 @@ fn render_table(
     let (selected, resolved_pid) = state
         .selected_pid
         .and_then(|pid| {
-            view.iter()
-                .position(|r| r.pid == pid)
+            state
+                .view
+                .iter()
+                .position(|&i| snap.rows[i].pid == pid)
                 .map(|i| (i, Some(pid)))
         })
         .unwrap_or((0, None));
@@ -167,12 +165,18 @@ fn render_table(
     let (selected, scroll_offset) =
         clamp_scroll(selected, state.scroll_offset, visible_rows, view_len);
 
-    let max_total = view.iter().map(|&r| r.total().combine()).max().unwrap_or(0);
+    let max_total = state
+        .view
+        .iter()
+        .map(|&i| snap.rows[i].total().combine())
+        .max()
+        .unwrap_or(0);
 
     let end = (scroll_offset + visible_rows as usize).min(view_len);
-    let display = &view[scroll_offset..end];
+    let display = &state.view[scroll_offset..end];
 
-    let table_rows = display.iter().enumerate().map(|(i, &row)| {
+    let table_rows = display.iter().enumerate().map(|(i, &idx)| {
+        let row = &snap.rows[idx];
         let is_selected = scroll_offset + i == selected;
         let base_style = if is_selected {
             Style::new()
@@ -215,7 +219,7 @@ fn render_table(
         Cell::from(k.label()).style(style)
     });
 
-    let title = table_title(state, tick, interval);
+    let title = table_title(state, snap.tick, snap.interval);
 
     let table = Table::new(
         table_rows,
@@ -238,18 +242,21 @@ fn render_table(
     state.view_len = view_len;
     state.visible_rows = visible_rows;
     state.view_pids.clear();
-    state.view_pids.extend(view.iter().map(|r| r.pid));
+    state
+        .view_pids
+        .extend(state.view.iter().map(|&i| snap.rows[i].pid));
     state.selected_pid = resolved_pid;
 }
 
-fn render_detail(frame: &mut Frame, area: Rect, view: &[&StatsRow], state: &TuiState) {
-    let Some(&row) = view.get(state.selected) else {
+fn render_detail(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &TuiState) {
+    let Some(&idx) = state.view.get(state.selected) else {
         frame.render_widget(
             Paragraph::new("No process selected").block(detail_block("details")),
             area,
         );
         return;
     };
+    let row = &snap.rows[idx];
 
     let unit = state.unit;
     let (tcp_cum, udp_cum) = row.cum();
@@ -629,8 +636,8 @@ mod tests {
         )
     }
 
-    fn pids(rows: &[&StatsRow]) -> Vec<u32> {
-        rows.iter().map(|r| r.pid).collect()
+    fn pids(rows: &[StatsRow], idx: &[usize]) -> Vec<u32> {
+        idx.iter().map(|&i| rows[i].pid).collect()
     }
 
     #[test]
@@ -640,13 +647,13 @@ mod tests {
             row(2, "b", (50, 0), (0, 0)),
             row(3, "c", (30, 0), (0, 0)),
         ];
-        let mut refs: Vec<&StatsRow> = rows.iter().collect();
+        let mut idx: Vec<usize> = (0..rows.len()).collect();
 
-        sort_rows(&mut refs, SortKey::Sent, SortDir::Desc);
-        assert_eq!(pids(&refs), vec![2, 3, 1]);
+        sort_rows(&rows, &mut idx, SortKey::Sent, SortDir::Desc);
+        assert_eq!(pids(&rows, &idx), vec![2, 3, 1]);
 
-        sort_rows(&mut refs, SortKey::Sent, SortDir::Asc);
-        assert_eq!(pids(&refs), vec![1, 3, 2]);
+        sort_rows(&rows, &mut idx, SortKey::Sent, SortDir::Asc);
+        assert_eq!(pids(&rows, &idx), vec![1, 3, 2]);
     }
 
     #[test]
@@ -656,13 +663,13 @@ mod tests {
             row(2, "b", (0, 50), (0, 0)),
             row(3, "c", (0, 30), (0, 0)),
         ];
-        let mut refs: Vec<&StatsRow> = rows.iter().collect();
+        let mut idx: Vec<usize> = (0..rows.len()).collect();
 
-        sort_rows(&mut refs, SortKey::Recv, SortDir::Desc);
-        assert_eq!(pids(&refs), vec![2, 3, 1]);
+        sort_rows(&rows, &mut idx, SortKey::Recv, SortDir::Desc);
+        assert_eq!(pids(&rows, &idx), vec![2, 3, 1]);
 
-        sort_rows(&mut refs, SortKey::Recv, SortDir::Asc);
-        assert_eq!(pids(&refs), vec![1, 3, 2]);
+        sort_rows(&rows, &mut idx, SortKey::Recv, SortDir::Asc);
+        assert_eq!(pids(&rows, &idx), vec![1, 3, 2]);
     }
 
     #[test]
@@ -672,13 +679,13 @@ mod tests {
             row(2, "b", (50, 5), (0, 0)), // 55
             row(3, "c", (30, 5), (0, 0)), // 35
         ];
-        let mut refs: Vec<&StatsRow> = rows.iter().collect();
+        let mut idx: Vec<usize> = (0..rows.len()).collect();
 
-        sort_rows(&mut refs, SortKey::Total, SortDir::Desc);
-        assert_eq!(pids(&refs), vec![2, 3, 1]);
+        sort_rows(&rows, &mut idx, SortKey::Total, SortDir::Desc);
+        assert_eq!(pids(&rows, &idx), vec![2, 3, 1]);
 
-        sort_rows(&mut refs, SortKey::Total, SortDir::Asc);
-        assert_eq!(pids(&refs), vec![1, 3, 2]);
+        sort_rows(&rows, &mut idx, SortKey::Total, SortDir::Asc);
+        assert_eq!(pids(&rows, &idx), vec![1, 3, 2]);
     }
 
     #[test]
@@ -688,13 +695,13 @@ mod tests {
             row(2, "alpha", (0, 0), (0, 0)),
             row(3, "bravo", (0, 0), (0, 0)),
         ];
-        let mut refs: Vec<&StatsRow> = rows.iter().collect();
+        let mut idx: Vec<usize> = (0..rows.len()).collect();
 
-        sort_rows(&mut refs, SortKey::Name, SortDir::Asc);
-        assert_eq!(pids(&refs), vec![2, 3, 1]);
+        sort_rows(&rows, &mut idx, SortKey::Name, SortDir::Asc);
+        assert_eq!(pids(&rows, &idx), vec![2, 3, 1]);
 
-        sort_rows(&mut refs, SortKey::Name, SortDir::Desc);
-        assert_eq!(pids(&refs), vec![1, 3, 2]);
+        sort_rows(&rows, &mut idx, SortKey::Name, SortDir::Desc);
+        assert_eq!(pids(&rows, &idx), vec![1, 3, 2]);
     }
 
     #[test]
@@ -704,13 +711,13 @@ mod tests {
             row(10, "a", (0, 0), (0, 0)),
             row(20, "b", (0, 0), (0, 0)),
         ];
-        let mut refs: Vec<&StatsRow> = rows.iter().collect();
+        let mut idx: Vec<usize> = (0..rows.len()).collect();
 
-        sort_rows(&mut refs, SortKey::Pid, SortDir::Asc);
-        assert_eq!(pids(&refs), vec![10, 20, 30]);
+        sort_rows(&rows, &mut idx, SortKey::Pid, SortDir::Asc);
+        assert_eq!(pids(&rows, &idx), vec![10, 20, 30]);
 
-        sort_rows(&mut refs, SortKey::Pid, SortDir::Desc);
-        assert_eq!(pids(&refs), vec![30, 20, 10]);
+        sort_rows(&rows, &mut idx, SortKey::Pid, SortDir::Desc);
+        assert_eq!(pids(&rows, &idx), vec![30, 20, 10]);
     }
 
     #[test]
@@ -721,13 +728,13 @@ mod tests {
             row(1, "a", (10, 0), (0, 0)),
             row(3, "c", (10, 0), (0, 0)),
         ];
-        let mut refs: Vec<&StatsRow> = rows.iter().collect();
+        let mut idx: Vec<usize> = (0..rows.len()).collect();
 
-        sort_rows(&mut refs, SortKey::Total, SortDir::Desc);
-        assert_eq!(pids(&refs), vec![1, 2, 3]);
+        sort_rows(&rows, &mut idx, SortKey::Total, SortDir::Desc);
+        assert_eq!(pids(&rows, &idx), vec![1, 2, 3]);
 
-        sort_rows(&mut refs, SortKey::Total, SortDir::Asc);
-        assert_eq!(pids(&refs), vec![1, 2, 3]);
+        sort_rows(&rows, &mut idx, SortKey::Total, SortDir::Asc);
+        assert_eq!(pids(&rows, &idx), vec![1, 2, 3]);
     }
 
     #[test]

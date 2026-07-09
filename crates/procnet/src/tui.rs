@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use procnet_core::stats::StatsRow;
+use procnet_core::ipc::SnapshotData;
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyEventKind},
@@ -30,9 +30,9 @@ impl Tui {
         }
     }
 
-    pub fn draw(&mut self, tick: u64, interval: u64, rows: &[StatsRow]) -> Result<(), TuiError> {
+    pub fn draw(&mut self, snap: &SnapshotData) -> Result<(), TuiError> {
         self.terminal
-            .draw(|frame| view::render(frame, tick, interval, rows, &mut self.state))
+            .draw(|frame| view::render(frame, snap, &mut self.state))
             .map_err(TuiError::Draw)?;
 
         Ok(())
