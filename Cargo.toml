@@ -24,6 +24,7 @@ dbg_macro = "warn"
 todo = "warn"
 missing_errors_doc = "allow"
 uninlined_format_args = "allow"
+needless_pass_by_value = "allow"
 
 [workspace.dependencies]
 anyhow = "1.0.102"

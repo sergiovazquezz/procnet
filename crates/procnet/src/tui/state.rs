@@ -1,3 +1,5 @@
+use procnet_core::stats::MAP_SIZE;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SortKey {
     Pid,
@@ -164,15 +166,51 @@ pub enum Pane {
 
 pub struct TuiState {
     pub sort_key: SortKey,
+
     pub sort_dir: SortDir,
+
     pub active_pane: Pane,
+
     pub filter_target: FilterTarget,
-    /// Committed filter; empty string means no filtering.
+
+    /// Committed filter. Empty string means no filtering.
     pub filter_text: String,
-    /// Display unit for byte counts.
+
+    /// Display unit for data.
     pub unit: Unit,
+
     /// Cursor row inside the unit picker (index into `Unit::ALL`).
     pub unit_picker_cursor: usize,
+
+    /// PID of the row the cursor is locked onto. `None` means the cursor
+    /// floats on the top row. It does not track a specific process until the
+    /// user moves it.
+    pub selected_pid: Option<u32>,
+
+    /// Resolved index of the cursor in the last rendered view. Written by
+    /// `render_table`, read by the input handler to move up/down.
+    pub selected: usize,
+
+    /// First visible row index into the filtered+sorted view.
+    pub scroll_offset: usize,
+
+    /// Indices into the most recent `snap.rows` forming the filtered+sorted
+    /// view. Reused across renders via clear+extend to avoid per-frame
+    /// allocation.
+    pub view: Vec<usize>,
+
+    /// PIDs of the current filtered+sorted view, refreshed each render so the
+    /// input handler can move the cursor without access to the snapshot.
+    pub view_pids: Vec<u32>,
+
+    /// How many table rows fit in the area at the last render.
+    pub visible_rows: u16,
+
+    /// Whether the live snapshot feed is frozen.
+    pub paused: bool,
+
+    /// Whether the per-process detail pane is shown.
+    pub show_detail: bool,
 }
 
 impl Default for TuiState {
@@ -184,13 +222,21 @@ impl Default for TuiState {
 impl TuiState {
     pub fn new() -> Self {
         Self {
-            sort_key: SortKey::Total,
+            sort_key: SortKey::Name,
             sort_dir: SortDir::Desc,
             active_pane: Pane::Command,
             filter_target: FilterTarget::Name,
             filter_text: String::new(),
             unit: Unit::Auto,
             unit_picker_cursor: Unit::Auto.index(),
+            selected_pid: None,
+            selected: 0,
+            scroll_offset: 0,
+            view: Vec::with_capacity(MAP_SIZE),
+            view_pids: Vec::new(),
+            visible_rows: 0,
+            paused: false,
+            show_detail: false,
         }
     }
 }

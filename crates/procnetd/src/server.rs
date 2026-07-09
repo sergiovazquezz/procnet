@@ -62,7 +62,6 @@ fn probe_and_bind(path: &Path) -> Result<UnixListener, ListenerError> {
     }
 }
 
-#[expect(clippy::needless_pass_by_value)]
 pub fn accept_loop(
     listener: UnixListener,
     senders: Arc<Mutex<SenderList>>,

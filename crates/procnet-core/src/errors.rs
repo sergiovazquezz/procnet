@@ -31,7 +31,7 @@ pub enum MsgSendError {
 
 #[derive(Debug, Error)]
 pub enum MsgReadError {
-    #[error("EOF reached, daemon closed")]
+    #[error("EOF reached")]
     Eof,
     #[error("Io: {0}")]
     Io(#[from] std::io::Error),
