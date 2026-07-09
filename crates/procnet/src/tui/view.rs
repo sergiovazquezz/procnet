@@ -119,7 +119,6 @@ pub fn render(frame: &mut Frame, snap: &SnapshotData, state: &mut TuiState) {
     }
 }
 
-#[expect(clippy::too_many_lines)]
 fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut TuiState) {
     if snap.rows.is_empty() {
         state.view_len = 0;
@@ -139,11 +138,13 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         state.view_len = 0;
         state.visible_rows = 0;
         state.view_pids.clear();
+
         frame.render_widget(
             Paragraph::new("No processes match the filter...")
                 .block(Block::default().borders(Borders::ALL)),
             area,
         );
+
         return;
     }
 
@@ -172,12 +173,51 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         .max()
         .unwrap_or(0);
 
-    let end = (scroll_offset + visible_rows as usize).min(view_len);
-    let display = &state.view[scroll_offset..end];
+    state.selected = selected;
+    state.scroll_offset = scroll_offset;
+    state.view_len = view_len;
+    state.visible_rows = visible_rows;
+    state.view_pids.clear();
+    state
+        .view_pids
+        .extend(state.view.iter().map(|&i| snap.rows[i].pid));
+    state.selected_pid = resolved_pid;
+
+    render_table_widget(
+        frame,
+        area,
+        snap,
+        state,
+        ViewWindow {
+            selected,
+            scroll_offset,
+            visible_rows,
+            max_total,
+        },
+    );
+}
+
+struct ViewWindow {
+    selected: usize,
+    scroll_offset: usize,
+    visible_rows: u16,
+    max_total: u64,
+}
+
+fn render_table_widget(
+    frame: &mut Frame,
+    area: Rect,
+    snap: &SnapshotData,
+    state: &TuiState,
+    window: ViewWindow,
+) {
+    let view_len = state.view.len();
+    let end = (window.scroll_offset + window.visible_rows as usize).min(view_len);
+    let display = &state.view[window.scroll_offset..end];
 
     let table_rows = display.iter().enumerate().map(|(i, &idx)| {
         let row = &snap.rows[idx];
-        let is_selected = scroll_offset + i == selected;
+        let is_selected = window.scroll_offset + i == window.selected;
         let base_style = if is_selected {
             Style::new()
                 .bg(theme::color::ACCENT)
@@ -188,9 +228,9 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
 
         let total_style = if is_selected {
             base_style
-        } else if max_total > 0 {
+        } else if window.max_total > 0 {
             Style::new().fg(theme::traffic_color(
-                row.total().combine() as f64 / max_total as f64,
+                row.total().combine() as f64 / window.max_total as f64,
             ))
         } else {
             Style::new()
@@ -236,16 +276,6 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
     .column_spacing(1);
 
     frame.render_widget(table, area);
-
-    state.selected = selected;
-    state.scroll_offset = scroll_offset;
-    state.view_len = view_len;
-    state.visible_rows = visible_rows;
-    state.view_pids.clear();
-    state
-        .view_pids
-        .extend(state.view.iter().map(|&i| snap.rows[i].pid));
-    state.selected_pid = resolved_pid;
 }
 
 fn render_detail(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &TuiState) {

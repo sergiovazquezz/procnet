@@ -18,7 +18,6 @@ resolved="$(realpath "$binary")"
 
 echo ""
 echo "Installing capabilities on: $resolved"
-echo ""
 
 sudo setcap 'cap_bpf,cap_perfmon,cap_sys_resource+ep' "$resolved"
 
