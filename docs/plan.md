@@ -14,9 +14,21 @@
 
 ## Features
 
-### Arguments
+- A row with total network usage by active processes (maybe also dead).
 
-- Stats: `--json`.
+- Add a dead process section, with the possibility to remove any.
+    - If a process with the same name exists merge the usage (optional).
+
+- Show the IPs/ports a process has used.
+
+- Add an option to change from cumulative stats to per tick stats.
+
+- Instead of crashing the client when the daemon is not active or not working
+  correctly, show a status message and reconnect when possible.
+
+- Add a daemon pause 'P' from the TUI and CLI.
+
+- Client: `--json`.
 
 ## Possible features
 
