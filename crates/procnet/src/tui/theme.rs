@@ -3,15 +3,11 @@ use ratatui::text::Span;
 
 use crate::tui::state::Unit;
 
-/// 16-color ANSI palette used across the TUI. Sticking to the basic set for
-/// portability across terminals, with the exception of `KEY` (truecolor
-/// dark gray, used for keybind-bar glyphs where it should read somewhat
-/// darker than the muted `DarkGray` label without going to black).
 pub mod color {
     use ratatui::style::Color;
+
     pub const ACCENT: Color = Color::Cyan;
     pub const MUTED: Color = Color::DarkGray;
-    pub const KEY: Color = Color::Rgb(75, 75, 75);
     pub const OK: Color = Color::Green;
     pub const WARN: Color = Color::Yellow;
     pub const HOT: Color = Color::Red;
@@ -70,12 +66,10 @@ pub fn sep_span() -> Span<'static> {
     Span::styled(" | ".to_string(), Style::new().fg(color::MUTED))
 }
 
-/// A span in the muted color.
 pub fn muted_span(s: &str) -> Span<'static> {
     Span::styled(s.to_string(), Style::new().fg(color::MUTED))
 }
 
-/// A span in the accent color.
 pub fn accent_span(s: &str) -> Span<'static> {
     Span::styled(s.to_string(), Style::new().fg(color::ACCENT))
 }

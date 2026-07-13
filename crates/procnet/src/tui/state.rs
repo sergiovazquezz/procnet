@@ -18,11 +18,11 @@ impl SortKey {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Pid => "PID",
-            Self::Name => "Name",
-            Self::Sent => "Sent",
-            Self::Recv => "Received",
-            Self::Total => "Total",
+            Self::Pid => "pid",
+            Self::Name => "name",
+            Self::Sent => "sent",
+            Self::Recv => "received",
+            Self::Total => "total",
         }
     }
 
@@ -96,7 +96,7 @@ impl Unit {
 
     pub const fn label(self) -> &'static str {
         match self {
-            Self::Auto => "Auto",
+            Self::Auto => "auto",
             Self::B => "B",
             Self::Kb => "KB",
             Self::Mb => "MB",

@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
+    widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
 use procnet_core::{
@@ -125,8 +125,11 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         state.visible_rows = 0;
         state.view_pids.clear();
         frame.render_widget(
-            Paragraph::new("Waiting for process stats...")
-                .block(Block::default().borders(Borders::ALL)),
+            Paragraph::new("Waiting for process stats...").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            ),
             area,
         );
         return;
@@ -137,8 +140,11 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         state.view_pids.clear();
 
         frame.render_widget(
-            Paragraph::new("No processes match the filter...")
-                .block(Block::default().borders(Borders::ALL)),
+            Paragraph::new("No processes match the filter...").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            ),
             area,
         );
 
@@ -272,7 +278,12 @@ fn render_table_widget(
         ],
     )
     .header(Row::new(header_cells))
-    .block(Block::default().borders(Borders::ALL).title_top(title))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title_top(title),
+    )
     .column_spacing(1);
 
     frame.render_widget(table, area);
@@ -302,15 +313,12 @@ fn render_detail(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &Tui
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw("  "),
-            Span::styled(
-                row.name.as_ref().to_string(),
-                Style::new().fg(theme::color::ACCENT),
-            ),
+            Span::raw(row.name.as_ref()),
         ]),
-        proto_line("TCP", row.tcp, tcp_cum, unit),
-        proto_line("UDP", row.udp, udp_cum, unit),
+        proto_line("TCP  ", row.tcp, tcp_cum, unit),
+        proto_line("UDP  ", row.udp, udp_cum, unit),
         Line::raw(""),
-        proto_line("Total", total, total_cum, unit),
+        proto_line("TOT  ", total, total_cum, unit),
     ];
 
     frame.render_widget(
@@ -352,6 +360,7 @@ fn proto_line(label: &str, tick: StatsBytes, cum: StatsBytes, unit: Unit) -> Lin
 fn detail_block(title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(theme::color::ACCENT))
         .title_top(
             Line::from(vec![
@@ -362,6 +371,7 @@ fn detail_block(title: &str) -> Block<'static> {
                         .fg(theme::color::ACCENT)
                         .add_modifier(Modifier::BOLD),
                 ),
+                Span::raw(" "),
             ])
             .left_aligned(),
         )
@@ -377,25 +387,25 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        theme::muted_span("Sort:"),
+        theme::muted_span("sort:"),
         Span::raw(" "),
         theme::accent_span(
             format!("{} {}", state.sort_key.label(), state.sort_dir.arrow()).as_str(),
         ),
         Span::raw("  "),
-        theme::muted_span("Filter:"),
+        theme::muted_span("filter:"),
         Span::raw(" "),
         filter_summary_span(state),
         Span::raw("  "),
-        theme::muted_span("Unit:"),
+        theme::muted_span("unit:"),
         Span::raw(" "),
         theme::accent_span(state.unit.label()),
         Span::raw("  "),
-        theme::muted_span("Tick:"),
+        theme::muted_span("tick:"),
         Span::raw(" "),
         theme::accent_span(tick.to_string().as_str()),
         Span::raw("  "),
-        theme::muted_span("Interval:"),
+        theme::muted_span("interval:"),
         Span::raw(" "),
         theme::accent_span(format!("{}ms", interval).as_str()),
     ];
@@ -404,9 +414,7 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             "PAUSED".to_string(),
-            Style::new()
-                .fg(theme::color::HOT)
-                .add_modifier(Modifier::BOLD),
+            Style::new().fg(theme::color::HOT),
         ));
     }
 
@@ -445,10 +453,7 @@ fn render_keybind_bar(frame: &mut Frame, area: Rect, state: &TuiState) {
                 Some(_) => spans.push(theme::sep_span()),
             }
 
-            spans.push(Span::styled(
-                bar_display_key(kb).to_string(),
-                Style::new().fg(theme::color::KEY),
-            ));
+            spans.push(Span::raw(bar_display_key(kb)));
             spans.push(Span::raw(" "));
 
             let label_style = if bar_active(kb, state) {
@@ -457,7 +462,7 @@ fn render_keybind_bar(frame: &mut Frame, area: Rect, state: &TuiState) {
                 Style::new().fg(theme::color::MUTED)
             };
 
-            spans.push(Span::styled(bar_label(kb, state).to_string(), label_style));
+            spans.push(Span::styled(bar_label(kb, state), label_style));
         }
     }
 
@@ -472,10 +477,10 @@ const fn bar_display_key(kb: &Keybind) -> &'static str {
     match kb.key {
         KeySpec::Chars(s) => s,
         KeySpec::Up | KeySpec::Down => "↑↓",
-        KeySpec::Enter => "Enter",
-        KeySpec::Esc => "Esc",
-        KeySpec::Backspace => "BkSp",
-        KeySpec::Tab => "Tab",
+        KeySpec::Enter => "enter",
+        KeySpec::Esc => "esc",
+        KeySpec::Backspace => "bksp",
+        KeySpec::Tab => "tab",
         KeySpec::Ctrl(_) => "",
     }
 }
@@ -511,18 +516,12 @@ fn render_filter_prompt(frame: &mut Frame, area: Rect, state: &TuiState) {
 
 fn render_unit_picker(frame: &mut Frame, state: &TuiState) {
     let area = frame.area();
-    let height = u16::try_from(Unit::ALL.len()).unwrap_or(6) + 4;
+    let height = u16::try_from(Unit::ALL.len()).unwrap_or(6) + 3;
     let popup = centered_fixed(area, 22, height);
 
     frame.render_widget(Clear, popup);
 
-    let mut lines: Vec<Line> = Vec::with_capacity(Unit::ALL.len() + 1);
-    lines.push(Line::from(vec![Span::styled(
-        "unit".to_string(),
-        Style::new()
-            .fg(theme::color::ACCENT)
-            .add_modifier(Modifier::BOLD),
-    )]));
+    let mut lines: Vec<Line> = Vec::with_capacity(Unit::ALL.len());
 
     for (i, u) in Unit::ALL.iter().enumerate() {
         let is_cursor = i == state.unit_picker_cursor;
@@ -545,30 +544,31 @@ fn render_unit_picker(frame: &mut Frame, state: &TuiState) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::new().fg(theme::color::ACCENT));
+        .border_type(BorderType::Rounded)
+        .title_top(
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    "unit".to_string(),
+                    Style::new()
+                        .fg(theme::color::ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+            ])
+            .left_aligned(),
+        );
 
     frame.render_widget(Paragraph::new(Text::from(lines)).block(block), popup);
 }
 
 fn render_help(frame: &mut Frame) {
     let area = frame.area();
-    let popup = centered_fixed(area, 52, 24);
+    let popup = centered_fixed(area, 52, 22);
 
     frame.render_widget(Clear, popup);
 
-    let mut lines: Vec<Line> = vec![
-        Line::from(vec![
-            Span::styled(
-                "procnet".to_string(),
-                Style::new()
-                    .fg(theme::color::ACCENT)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            theme::muted_span("— keybindings"),
-        ]),
-        Line::raw(""),
-    ];
+    let mut lines: Vec<Line> = Vec::new();
 
     for sec in Section::ALL {
         let mut entries: Vec<&Keybind> = Vec::new();
@@ -624,7 +624,20 @@ fn render_help(frame: &mut Frame) {
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::new().fg(theme::color::ACCENT));
+        .border_type(BorderType::Rounded)
+        .title_top(
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    "help".to_string(),
+                    Style::new()
+                        .fg(theme::color::ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+            ])
+            .left_aligned(),
+        );
 
     frame.render_widget(Paragraph::new(Text::from(lines)).block(block), popup);
 }

@@ -310,7 +310,7 @@ static SORT_KEYS: [Keybind; 6] = [
     },
     Keybind {
         key: KeySpec::Chars("1"),
-        label: "PID",
+        label: "pid",
         section: Section::Sorting,
         help: Help {
             active: true,
@@ -323,7 +323,7 @@ static SORT_KEYS: [Keybind; 6] = [
     },
     Keybind {
         key: KeySpec::Chars("2"),
-        label: "Name",
+        label: "name",
         section: Section::Sorting,
         help: Help {
             active: true,
@@ -336,7 +336,7 @@ static SORT_KEYS: [Keybind; 6] = [
     },
     Keybind {
         key: KeySpec::Chars("3"),
-        label: "Sent",
+        label: "sent",
         section: Section::Sorting,
         help: Help {
             active: true,
@@ -349,7 +349,7 @@ static SORT_KEYS: [Keybind; 6] = [
     },
     Keybind {
         key: KeySpec::Chars("4"),
-        label: "Recv",
+        label: "recv",
         section: Section::Sorting,
         help: Help {
             active: true,
@@ -362,7 +362,7 @@ static SORT_KEYS: [Keybind; 6] = [
     },
     Keybind {
         key: KeySpec::Chars("5"),
-        label: "Total",
+        label: "total",
         section: Section::Sorting,
         help: Help {
             active: true,
@@ -450,7 +450,7 @@ static FILTER_KEYS: [Keybind; 5] = [
     },
     Keybind {
         key: KeySpec::Tab,
-        label: "name⇄pid",
+        label: "name ⇄ pid",
         section: Section::Filtering,
         help: Help {
             active: true,
@@ -502,37 +502,19 @@ static FILTER_KEYS: [Keybind; 5] = [
     },
 ];
 
-static HELP_KEYS: [Keybind; 2] = [
-    Keybind {
-        key: KeySpec::Chars("?h"),
-        label: "",
-        section: Section::Other,
-        help: Help {
-            active: false,
-            group: None,
-            text: "",
-        },
-        help_glyph: "",
-        bar: false,
-        action: |s| {
-            s.active_pane = Pane::Main;
-            Action::Redraw
-        },
+static HELP_KEYS: [Keybind; 1] = [Keybind {
+    key: KeySpec::Esc,
+    label: "hide",
+    section: Section::Other,
+    help: Help {
+        active: false,
+        group: None,
+        text: "",
     },
-    Keybind {
-        key: KeySpec::Esc,
-        label: "",
-        section: Section::Other,
-        help: Help {
-            active: false,
-            group: None,
-            text: "",
-        },
-        help_glyph: "",
-        bar: false,
-        action: |s| {
-            s.active_pane = Pane::Main;
-            Action::Redraw
-        },
+    help_glyph: "",
+    bar: true,
+    action: |s| {
+        s.active_pane = Pane::Main;
+        Action::Redraw
     },
-];
+}];
