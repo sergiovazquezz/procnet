@@ -12,6 +12,7 @@ use procnet_core::{
 };
 
 use crate::tui::{
+    keys::{ALL, HelpGroup, KeySpec, Keybind, Section},
     state::{FilterTarget, Pane, SortDir, SortKey, TuiState, Unit},
     theme,
 };
@@ -115,7 +116,7 @@ pub fn render(frame: &mut Frame, snap: &SnapshotData, state: &mut TuiState) {
         Pane::Filter => render_filter_prompt(frame, layout[idx], state),
         Pane::Help => render_help(frame),
         Pane::Unit => render_unit_picker(frame, state),
-        Pane::Command => {}
+        Pane::Main => {}
     }
 }
 
@@ -398,6 +399,7 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
         Span::raw(" "),
         theme::accent_span(format!("{}ms", interval).as_str()),
     ];
+
     if state.paused {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
@@ -407,15 +409,20 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
                 .add_modifier(Modifier::BOLD),
         ));
     }
+
+    spans.push(Span::raw(" "));
+
     Line::from(spans).left_aligned()
 }
 
 /// Build the right-hand side of the title: the effective filter expression.
 fn filter_summary_span(state: &TuiState) -> Span<'static> {
     let text = state.filter_text.as_str();
+
     if text.is_empty() {
         return theme::muted_span("none");
     }
+
     Span::styled(
         format!("{}~\"{}\"", state.filter_target.label(), text),
         Style::new().fg(theme::color::ACCENT),
@@ -423,75 +430,70 @@ fn filter_summary_span(state: &TuiState) -> Span<'static> {
 }
 
 fn render_keybind_bar(frame: &mut Frame, area: Rect, state: &TuiState) {
-    let line = match state.active_pane {
-        Pane::Filter => Line::from(vec![
-            theme::key_span("Enter", false),
-            theme::label_span("apply"),
-            Span::raw(" "),
-            theme::key_span("Tab", false),
-            theme::label_span("name⇄pid"),
-            Span::raw(" "),
-            theme::key_span("Esc", false),
-            theme::label_span("cancel"),
-            theme::sep_span(),
-            theme::key_span("?", false),
-            theme::label_span("help"),
-        ]),
-        Pane::Unit => Line::from(vec![
-            theme::key_span("↑↓", false),
-            theme::label_span("move"),
-            Span::raw(" "),
-            theme::key_span("Enter", false),
-            theme::label_span("apply"),
-            Span::raw(" "),
-            theme::key_span("Esc", false),
-            theme::label_span("cancel"),
-            theme::sep_span(),
-            theme::key_span("?", false),
-            theme::label_span("help"),
-        ]),
-        _ => {
-            let mut spans: Vec<Span> = Vec::new();
-            for (i, k) in SortKey::ALL.iter().enumerate() {
-                if i > 0 {
-                    spans.push(Span::raw(" "));
-                }
-                spans.push(theme::key_span(k.digit().to_string().as_str(), false));
-                spans.push(theme::label_span(k.label()));
-            }
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("↑↓", false));
-            spans.push(theme::label_span("move"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("r", false));
-            spans.push(theme::label_span("reverse"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("u", false));
-            spans.push(theme::label_span("unit"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("/", false));
-            spans.push(theme::label_span("filter"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("d", state.show_detail));
-            spans.push(theme::label_span("details"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("p", state.paused));
-            spans.push(theme::label_span(if state.paused {
-                "resume"
-            } else {
-                "pause"
-            }));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("?", false));
-            spans.push(theme::label_span("help"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("q", false));
-            spans.push(theme::label_span("quit"));
-            Line::from(spans)
-        }
-    };
+    let mut spans: Vec<Span> = Vec::new();
+    let mut prev_vis_group: Option<usize> = None;
 
-    frame.render_widget(Paragraph::new(line), area);
+    for (gi, group) in state.active_pane.keybinds().iter().enumerate() {
+        for kb in *group {
+            if !kb.bar || kb.label.is_empty() {
+                continue;
+            }
+
+            match prev_vis_group.replace(gi) {
+                None => {}
+                Some(p) if p == gi => spans.push(Span::raw("  ")),
+                Some(_) => spans.push(theme::sep_span()),
+            }
+
+            spans.push(Span::styled(
+                bar_display_key(kb).to_string(),
+                Style::new().fg(theme::color::KEY),
+            ));
+            spans.push(Span::raw(" "));
+
+            let label_style = if bar_active(kb, state) {
+                Style::new().fg(theme::color::ACCENT)
+            } else {
+                Style::new().fg(theme::color::MUTED)
+            };
+
+            spans.push(Span::styled(bar_label(kb, state).to_string(), label_style));
+        }
+    }
+
+    if !spans.is_empty() {
+        spans.push(Span::raw("  "));
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+const fn bar_display_key(kb: &Keybind) -> &'static str {
+    match kb.key {
+        KeySpec::Chars(s) => s,
+        KeySpec::Up | KeySpec::Down => "↑↓",
+        KeySpec::Enter => "Enter",
+        KeySpec::Esc => "Esc",
+        KeySpec::Backspace => "BkSp",
+        KeySpec::Tab => "Tab",
+        KeySpec::Ctrl(_) => "",
+    }
+}
+
+fn bar_active(kb: &Keybind, state: &TuiState) -> bool {
+    match kb.label {
+        "pause" => state.paused,
+        "details" => state.show_detail,
+        _ => false,
+    }
+}
+
+fn bar_label(kb: &Keybind, state: &TuiState) -> &'static str {
+    if kb.label == "pause" {
+        if state.paused { "resume" } else { "pause" }
+    } else {
+        kb.label
+    }
 }
 
 /// The table layout grows a third row only while this is visible.
@@ -541,11 +543,6 @@ fn render_unit_picker(frame: &mut Frame, state: &TuiState) {
         )]));
     }
 
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![theme::muted_span(
-        "↑↓ move  Enter apply  Esc cancel",
-    )]));
-
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::new().fg(theme::color::ACCENT));
@@ -559,7 +556,7 @@ fn render_help(frame: &mut Frame) {
 
     frame.render_widget(Clear, popup);
 
-    let lines: Vec<Line> = vec![
+    let mut lines: Vec<Line> = vec![
         Line::from(vec![
             Span::styled(
                 "procnet".to_string(),
@@ -571,27 +568,59 @@ fn render_help(frame: &mut Frame) {
             theme::muted_span("— keybindings"),
         ]),
         Line::raw(""),
-        section_header("Sorting"),
-        help_line("1-5", "Sort by PID / Name / Sent / Recv / Total"),
-        help_line("r", "Reverse current sort direction"),
-        Line::raw(""),
-        section_header("Navigation"),
-        help_line("↑↓ jk", "Move the cursor (it tracks the process)"),
-        help_line("d", "Toggle the per-process detail pane"),
-        Line::raw(""),
-        section_header("Filtering"),
-        help_line("/", "Start or edit filter"),
-        help_line("Tab", "Switch filter target (name ⇄ pid)"),
-        help_line("Enter", "Apply filter"),
-        help_line("BkSp", "Delete last character"),
-        help_line("Esc", "Cancel input, or clear applied filter"),
-        Line::raw(""),
-        section_header("Other"),
-        help_line("p", "Pause / resume the live feed"),
-        help_line("u", "Choose display unit (Auto/B/KB/MB/GB/TB)"),
-        help_line("?  h", "Toggle this help"),
-        help_line("q", "Quit  (Ctrl-C also works)"),
     ];
+
+    for sec in Section::ALL {
+        let mut entries: Vec<&Keybind> = Vec::new();
+        for group in ALL {
+            for kb in group {
+                if kb.help.active && kb.section == sec {
+                    entries.push(kb);
+                }
+            }
+        }
+
+        if entries.is_empty() {
+            continue;
+        }
+
+        lines.push(section_header(sec.text()));
+
+        let mut seen: Vec<HelpGroup> = Vec::new();
+
+        for kb in &entries {
+            if let Some(g) = kb.help.group {
+                if seen.contains(&g) {
+                    continue;
+                }
+
+                seen.push(g);
+
+                let glyphs: String = entries
+                    .iter()
+                    .filter(|e| e.help.group == Some(g) && !e.help_glyph.is_empty())
+                    .map(|e| e.help_glyph)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                lines.push(help_line(&glyphs, g.text()));
+            } else {
+                let glyph: &'static str = if kb.help_glyph.is_empty() {
+                    bar_display_key(kb)
+                } else {
+                    kb.help_glyph
+                };
+
+                lines.push(help_line(glyph, kb.help.text));
+            }
+        }
+
+        lines.push(Line::raw(""));
+    }
+
+    if matches!(lines.last(), Some(l) if l.spans.is_empty()) {
+        lines.pop();
+    }
 
     let block = Block::default()
         .borders(Borders::ALL)

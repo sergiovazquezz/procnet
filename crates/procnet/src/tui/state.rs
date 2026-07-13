@@ -1,5 +1,8 @@
 use procnet_core::stats::MAP_SIZE;
 
+use crate::tui::keys;
+use crate::tui::keys::Keybind;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SortKey {
     Pid,
@@ -20,28 +23,6 @@ impl SortKey {
             Self::Sent => "Sent",
             Self::Recv => "Received",
             Self::Total => "Total",
-        }
-    }
-
-    pub const fn from_digit(d: char) -> Option<Self> {
-        match d {
-            '1' => Some(Self::Pid),
-            '2' => Some(Self::Name),
-            '3' => Some(Self::Sent),
-            '4' => Some(Self::Recv),
-            '5' => Some(Self::Total),
-            _ => None,
-        }
-    }
-
-    /// Inverse of `from_digit`: the digit key that selects this column.
-    pub const fn digit(self) -> char {
-        match self {
-            Self::Pid => '1',
-            Self::Name => '2',
-            Self::Sent => '3',
-            Self::Recv => '4',
-            Self::Total => '5',
         }
     }
 
@@ -158,10 +139,21 @@ pub enum Action {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
+    Main,
     Help,
     Unit,
     Filter,
-    Command,
+}
+
+impl Pane {
+    pub fn keybinds(self) -> &'static [&'static [Keybind]] {
+        match self {
+            Self::Main => &keys::MAIN_GROUP,
+            Self::Unit => &keys::UNIT_PICKER_GROUP,
+            Self::Help => &keys::HELP_GROUP,
+            Self::Filter => &keys::FILTER_GROUP,
+        }
+    }
 }
 
 pub struct TuiState {
@@ -224,7 +216,7 @@ impl TuiState {
         Self {
             sort_key: SortKey::Name,
             sort_dir: SortDir::Desc,
-            active_pane: Pane::Command,
+            active_pane: Pane::Main,
             filter_target: FilterTarget::Name,
             filter_text: String::new(),
             unit: Unit::Auto,

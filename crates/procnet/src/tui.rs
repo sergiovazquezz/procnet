@@ -9,6 +9,7 @@ use ratatui::{
 use crate::errors::TuiError;
 
 mod input;
+mod keys;
 mod state;
 mod theme;
 mod view;

@@ -1,14 +1,17 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 
 use crate::tui::state::Unit;
 
 /// 16-color ANSI palette used across the TUI. Sticking to the basic set for
-/// portability across terminals.
+/// portability across terminals, with the exception of `KEY` (truecolor
+/// dark gray, used for keybind-bar glyphs where it should read somewhat
+/// darker than the muted `DarkGray` label without going to black).
 pub mod color {
     use ratatui::style::Color;
     pub const ACCENT: Color = Color::Cyan;
     pub const MUTED: Color = Color::DarkGray;
+    pub const KEY: Color = Color::Rgb(75, 75, 75);
     pub const OK: Color = Color::Green;
     pub const WARN: Color = Color::Yellow;
     pub const HOT: Color = Color::Red;
@@ -63,28 +66,8 @@ pub fn traffic_color(ratio: f64) -> Color {
     }
 }
 
-/// A key glyph shown as `[key]`. When `active`, it is rendered with an accent
-/// background so the current state is visible at a glance.
-pub fn key_span(key: &str, active: bool) -> Span<'static> {
-    let style = if active {
-        Style::new()
-            .bg(color::ACCENT)
-            .fg(color::INVERT_TEXT)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::new().fg(color::ACCENT).add_modifier(Modifier::BOLD)
-    };
-    Span::styled(format!("[{key}]"), style)
-}
-
-/// A muted label following a key chip.
-pub fn label_span(label: &str) -> Span<'static> {
-    Span::styled(label.to_string(), Style::new().fg(color::MUTED))
-}
-
-/// A ` │ ` separator between keybind groups.
 pub fn sep_span() -> Span<'static> {
-    Span::styled(" │ ".to_string(), Style::new().fg(color::MUTED))
+    Span::styled(" | ".to_string(), Style::new().fg(color::MUTED))
 }
 
 /// A span in the muted color.
