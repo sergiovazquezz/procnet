@@ -163,7 +163,7 @@ static QUIT_KEYS: [Keybind; 2] = [
 static MAIN_KEYS: [Keybind; 8] = [
     Keybind {
         key: KeySpec::Chars("+"),
-        label: "increase interval",
+        label: "interval",
         section: Section::Other,
         help: Help {
             active: true,
@@ -179,7 +179,7 @@ static MAIN_KEYS: [Keybind; 8] = [
     },
     Keybind {
         key: KeySpec::Chars("-"),
-        label: "decrease interval",
+        label: "",
         section: Section::Other,
         help: Help {
             active: true,
@@ -187,7 +187,7 @@ static MAIN_KEYS: [Keybind; 8] = [
             text: "",
         },
         help_glyph: "",
-        bar: true,
+        bar: false,
         action: |_, stream| {
             let _ = cli::send_daemon_command(DaemonCommand::IntervalDecrease, stream);
             Action::None

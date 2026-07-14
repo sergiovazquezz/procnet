@@ -473,8 +473,9 @@ fn render_keybind_bar(frame: &mut Frame, area: Rect, state: &TuiState) {
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-const fn bar_display_key(kb: &Keybind) -> &'static str {
+fn bar_display_key(kb: &Keybind) -> &'static str {
     match kb.key {
+        KeySpec::Chars("+" | "-") => "+-",
         KeySpec::Chars(s) => s,
         KeySpec::Up | KeySpec::Down => "↑↓",
         KeySpec::Enter => "enter",
