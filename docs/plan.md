@@ -33,3 +33,5 @@
 ## Possible features
 
 - Add Unix sockets via `unix_stream_sendmsg` and `unix_stream_recvmsg`.
+
+- Add reset to TUI.
