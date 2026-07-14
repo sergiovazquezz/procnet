@@ -12,7 +12,7 @@ use procnet_core::{
 };
 
 use crate::tui::{
-    keys::{ALL, HelpGroup, KeySpec, Keybind, Section},
+    keys::{self, HelpGroup, KeySpec, Keybind, Section},
     state::{FilterTarget, Pane, SortDir, SortKey, TuiState, Unit},
     theme,
 };
@@ -381,7 +381,7 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = vec![
         Span::raw(" "),
         Span::styled(
-            "procnet".to_string(),
+            "procnet",
             Style::new()
                 .fg(theme::color::ACCENT)
                 .add_modifier(Modifier::BOLD),
@@ -389,9 +389,11 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
         Span::raw("  "),
         theme::muted_span("sort:"),
         Span::raw(" "),
-        theme::accent_span(
-            format!("{} {}", state.sort_key.label(), state.sort_dir.arrow()).as_str(),
-        ),
+        theme::accent_span(format!(
+            "{} {}",
+            state.sort_key.label(),
+            state.sort_dir.arrow()
+        )),
         Span::raw("  "),
         theme::muted_span("filter:"),
         Span::raw(" "),
@@ -403,11 +405,11 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
         Span::raw("  "),
         theme::muted_span("tick:"),
         Span::raw(" "),
-        theme::accent_span(tick.to_string().as_str()),
+        theme::accent_span(tick.to_string()),
         Span::raw("  "),
         theme::muted_span("interval:"),
         Span::raw(" "),
-        theme::accent_span(format!("{}ms", interval).as_str()),
+        theme::accent_span(format!("{}ms", interval)),
     ];
 
     if state.paused {
@@ -505,7 +507,7 @@ fn bar_label(kb: &Keybind, state: &TuiState) -> &'static str {
 /// The table layout grows a third row only while this is visible.
 fn render_filter_prompt(frame: &mut Frame, area: Rect, state: &TuiState) {
     let prompt = Line::from(vec![
-        theme::muted_span(format!("Filter by {}: ", state.filter_target.label()).as_str()),
+        theme::muted_span(format!("Filter by {}: ", state.filter_target.label())),
         Span::styled(
             state.filter_text.clone(),
             Style::new().fg(theme::color::ACCENT),
@@ -573,7 +575,8 @@ fn render_help(frame: &mut Frame) {
 
     for sec in Section::ALL {
         let mut entries: Vec<&Keybind> = Vec::new();
-        for group in ALL {
+
+        for group in keys::ALL {
             for kb in group {
                 if kb.help.active && kb.section == sec {
                     entries.push(kb);
@@ -589,7 +592,7 @@ fn render_help(frame: &mut Frame) {
 
         let mut seen: Vec<HelpGroup> = Vec::new();
 
-        for kb in &entries {
+        for kb in entries {
             if let Some(g) = kb.help.group {
                 if seen.contains(&g) {
                     continue;
@@ -597,20 +600,9 @@ fn render_help(frame: &mut Frame) {
 
                 seen.push(g);
 
-                let glyphs: String = entries
-                    .iter()
-                    .filter(|e| e.help.group == Some(g) && !e.help_glyph.is_empty())
-                    .map(|e| e.help_glyph)
-                    .collect::<Vec<_>>()
-                    .join(" ");
-
-                lines.push(help_line(&glyphs, g.text()));
+                lines.push(help_line(g.glyph(), g.text()));
             } else {
-                let glyph: &'static str = if kb.help_glyph.is_empty() {
-                    bar_display_key(kb)
-                } else {
-                    kb.help_glyph
-                };
+                let glyph = bar_display_key(kb);
 
                 lines.push(help_line(glyph, kb.help.text));
             }
@@ -652,7 +644,7 @@ fn section_header(label: &str) -> Line<'static> {
     )])
 }
 
-fn help_line(key: &str, desc: &str) -> Line<'static> {
+fn help_line(key: &'static str, desc: &'static str) -> Line<'static> {
     Line::from(vec![
         Span::raw(" "),
         Span::styled(

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 
@@ -66,10 +68,10 @@ pub fn sep_span() -> Span<'static> {
     Span::styled(" | ".to_string(), Style::new().fg(color::MUTED))
 }
 
-pub fn muted_span(s: &str) -> Span<'static> {
-    Span::styled(s.to_string(), Style::new().fg(color::MUTED))
+pub fn muted_span<'a, S: Into<Cow<'a, str>>>(s: S) -> Span<'a> {
+    Span::styled(s, Style::new().fg(color::MUTED))
 }
 
-pub fn accent_span(s: &str) -> Span<'static> {
-    Span::styled(s.to_string(), Style::new().fg(color::ACCENT))
+pub fn accent_span<'a, S: Into<Cow<'a, str>>>(s: S) -> Span<'a> {
+    Span::styled(s, Style::new().fg(color::ACCENT))
 }

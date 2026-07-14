@@ -56,6 +56,14 @@ pub enum HelpGroup {
 }
 
 impl HelpGroup {
+    pub const fn glyph(self) -> &'static str {
+        match self {
+            Self::Interval => "+-",
+            Self::Move => "↑↓ jk",
+            Self::SortNums => "1-5",
+        }
+    }
+
     pub const fn text(self) -> &'static str {
         match self {
             Self::Interval => "Increase or decrease the interval",
@@ -92,12 +100,6 @@ pub struct Keybind {
 
     pub help: Help,
 
-    /// Glyph shown in the help popup. If non-empty, overrides the
-    /// `KeySpec`-derived glyph (used to share one representative glyph
-    /// across a `HelpGroup`, e.g. "1-5" or "↑↓ jk"). Empty falls back to
-    /// the `KeySpec`-derived glyph.
-    pub help_glyph: &'static str,
-
     /// Whether this binding should appear in the keybind bar of its pane.
     pub bar: bool,
 
@@ -119,8 +121,6 @@ pub static UNIT_PICKER_GROUP: [&[Keybind]; 3] = [&UNIT_PICKER_KEYS, &NAVIGATION_
 pub static HELP_GROUP: [&[Keybind]; 2] = [&HELP_KEYS, &QUIT_KEYS];
 pub static FILTER_GROUP: [&[Keybind]; 1] = [&FILTER_KEYS];
 
-/// Flat view of every keybind group, for the help popup. Each leaf array
-/// appears exactly once.
 pub static ALL: [&[Keybind]; 7] = [
     &MAIN_KEYS,
     &NAVIGATION_KEYS,
@@ -141,7 +141,6 @@ static QUIT_KEYS: [Keybind; 2] = [
             group: None,
             text: "Quit (Ctrl-C also works)",
         },
-        help_glyph: "",
         bar: true,
         action: |_, _| Action::Quit,
     },
@@ -154,7 +153,6 @@ static QUIT_KEYS: [Keybind; 2] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: false,
         action: |_, _| Action::Quit,
     },
@@ -170,7 +168,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: Some(HelpGroup::Interval),
             text: "",
         },
-        help_glyph: "+-",
         bar: true,
         action: |_, stream| {
             let _ = cli::send_daemon_command(DaemonCommand::IntervalIncrease, stream);
@@ -186,7 +183,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: Some(HelpGroup::Interval),
             text: "",
         },
-        help_glyph: "",
         bar: false,
         action: |_, stream| {
             let _ = cli::send_daemon_command(DaemonCommand::IntervalDecrease, stream);
@@ -202,7 +198,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: None,
             text: "Pause / resume the live feed",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.paused = !state.paused;
@@ -218,7 +213,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: None,
             text: "Toggle the per-process detail pane",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.show_detail = !state.show_detail;
@@ -234,7 +228,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: None,
             text: "Choose display unit (Auto/B/KB/MB/GB/TB)",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.active_pane = Pane::Unit;
@@ -251,7 +244,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: None,
             text: "Start or edit filter",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.active_pane = Pane::Filter;
@@ -267,7 +259,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: None,
             text: "Toggle this help",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.active_pane = Pane::Help;
@@ -283,7 +274,6 @@ static MAIN_KEYS: [Keybind; 8] = [
             group: None,
             text: "Cancel input, or clear applied filter",
         },
-        help_glyph: "",
         bar: false,
         action: |state, _| {
             if state.filter_text.is_empty() {
@@ -306,7 +296,6 @@ static UNIT_PICKER_KEYS: [Keybind; 2] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.unit = Unit::ALL[state.unit_picker_cursor];
@@ -323,7 +312,6 @@ static UNIT_PICKER_KEYS: [Keybind; 2] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.active_pane = Pane::Main;
@@ -342,7 +330,6 @@ static SORT_KEYS: [Keybind; 6] = [
             group: None,
             text: "Reverse current sort direction",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| {
             state.sort_dir = state.sort_dir.toggle();
@@ -358,7 +345,6 @@ static SORT_KEYS: [Keybind; 6] = [
             group: Some(HelpGroup::SortNums),
             text: "",
         },
-        help_glyph: "1-5",
         bar: true,
         action: |state, _| apply_sort(state, SortKey::Pid),
     },
@@ -371,7 +357,6 @@ static SORT_KEYS: [Keybind; 6] = [
             group: Some(HelpGroup::SortNums),
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| apply_sort(state, SortKey::Name),
     },
@@ -384,7 +369,6 @@ static SORT_KEYS: [Keybind; 6] = [
             group: Some(HelpGroup::SortNums),
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| apply_sort(state, SortKey::Sent),
     },
@@ -397,7 +381,6 @@ static SORT_KEYS: [Keybind; 6] = [
             group: Some(HelpGroup::SortNums),
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| apply_sort(state, SortKey::Recv),
     },
@@ -410,7 +393,6 @@ static SORT_KEYS: [Keybind; 6] = [
             group: Some(HelpGroup::SortNums),
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |state, _| apply_sort(state, SortKey::Total),
     },
@@ -427,7 +409,6 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
             group: Some(HelpGroup::Move),
             text: "",
         },
-        help_glyph: "↑↓ jk",
         bar: true,
         action: |state, _| input::move_cursor(state, true),
     },
@@ -440,7 +421,6 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: false,
         action: |state, _| input::move_cursor(state, false),
     },
@@ -453,7 +433,6 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: false,
         action: |state, _| input::move_cursor(state, true),
     },
@@ -466,7 +445,6 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: false,
         action: |state, _| input::move_cursor(state, false),
     },
@@ -485,7 +463,6 @@ static FILTER_KEYS: [Keybind; 5] = [
             group: None,
             text: "Apply filter",
         },
-        help_glyph: "",
         bar: true,
         action: |_, _| Action::None,
     },
@@ -498,7 +475,6 @@ static FILTER_KEYS: [Keybind; 5] = [
             group: None,
             text: "Switch filter target (name ⇄ pid)",
         },
-        help_glyph: "",
         bar: true,
         action: |_, _| Action::None,
     },
@@ -511,7 +487,6 @@ static FILTER_KEYS: [Keybind; 5] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |_, _| Action::None,
     },
@@ -524,7 +499,6 @@ static FILTER_KEYS: [Keybind; 5] = [
             group: None,
             text: "Delete last character",
         },
-        help_glyph: "",
         bar: false,
         action: |_, _| Action::None,
     },
@@ -537,7 +511,6 @@ static FILTER_KEYS: [Keybind; 5] = [
             group: None,
             text: "",
         },
-        help_glyph: "",
         bar: true,
         action: |_, _| Action::None,
     },
@@ -552,7 +525,6 @@ static HELP_KEYS: [Keybind; 1] = [Keybind {
         group: None,
         text: "",
     },
-    help_glyph: "",
     bar: true,
     action: |state, _| {
         state.active_pane = Pane::Main;
