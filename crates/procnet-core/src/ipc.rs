@@ -9,13 +9,9 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
     errors::{ConnectError, MsgReadError, MsgSendError},
-    stats::StatsRow,
+    stats::{ProcInfo, StatsRow},
 };
 
-/// Resolves the path of the Unix domain socket used to talk to the daemon.
-///
-/// Prefers `$XDG_RUNTIME_DIR/procnetd.sock`, and falls back to
-/// `/tmp/procnetd.sock` when `XDG_RUNTIME_DIR` is not set.
 #[must_use]
 pub fn socket_path() -> PathBuf {
     match std::env::var_os("XDG_RUNTIME_DIR") {
@@ -46,6 +42,7 @@ pub struct SnapshotData {
     pub interval: u64,
     pub tick: u64,
     pub rows: Vec<StatsRow>,
+    pub dead_procs: Vec<ProcInfo>,
 }
 
 /// Borrowed view of a `SnapshotData`, used by the daemon to avoid cloning the
@@ -55,6 +52,7 @@ pub struct SnapshotRef<'a> {
     pub interval: u64,
     pub tick: u64,
     pub rows: &'a [StatsRow],
+    pub dead_procs: &'a [ProcInfo],
 }
 
 pub fn connect_to_socket() -> Result<UnixStream, ConnectError> {
@@ -132,19 +130,31 @@ mod tests {
         )]
     }
 
+    fn sample_dead_procs() -> Vec<ProcInfo> {
+        vec![ProcInfo::new(
+            99,
+            "ghost",
+            StatsBytes { sent: 7, recv: 9 },
+            StatsBytes { sent: 3, recv: 4 },
+        )]
+    }
+
     #[test]
     fn snapshot_ref_and_data_encode_identically() {
         let rows = sample_rows();
+        let dead = sample_dead_procs();
 
         let owned = SnapshotData {
             interval: 1000,
             tick: 42,
             rows: rows.clone(),
+            dead_procs: dead.clone(),
         };
         let borrowed = SnapshotRef {
             interval: 1000,
             tick: 42,
             rows: &rows,
+            dead_procs: &dead,
         };
 
         assert_eq!(
@@ -156,10 +166,12 @@ mod tests {
     #[test]
     fn write_msg_bytes_frames_with_le_length_prefix() {
         let rows = sample_rows();
+        let dead = sample_dead_procs();
         let borrowed = SnapshotRef {
             interval: 100,
             tick: 42,
             rows: &rows,
+            dead_procs: &dead,
         };
         let mut buf = Vec::<u8>::new();
         write_msg(&mut buf, &borrowed).unwrap();
@@ -170,15 +182,18 @@ mod tests {
         let parsed: SnapshotData = bincode::deserialize_from(&buf[PREFIX_LEN..]).unwrap();
         assert_eq!(parsed.tick, 42);
         assert_eq!(parsed.rows, rows);
+        assert_eq!(parsed.dead_procs, dead);
     }
 
     #[test]
     fn write_msg_bytes_reuses_buffer_capacity() {
         let rows = sample_rows();
+        let dead = sample_dead_procs();
         let borrowed = SnapshotRef {
             interval: 5000,
             tick: 42,
             rows: &rows,
+            dead_procs: &dead,
         };
 
         let mut buf = Vec::with_capacity(8192);
@@ -195,10 +210,12 @@ mod tests {
     #[test]
     fn read_msg_round_trips_frame() {
         let rows = sample_rows();
+        let dead = sample_dead_procs();
         let borrowed = SnapshotRef {
             interval: 2500,
             tick: 7,
             rows: &rows,
+            dead_procs: &dead,
         };
         let mut buf = Vec::new();
         write_msg(&mut buf, &borrowed).unwrap();
@@ -209,6 +226,7 @@ mod tests {
         assert_eq!(parsed.interval, 2500);
         assert_eq!(parsed.tick, 7);
         assert_eq!(parsed.rows, rows);
+        assert_eq!(parsed.dead_procs, dead);
     }
 
     #[test]

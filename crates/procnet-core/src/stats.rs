@@ -4,6 +4,9 @@ use crate::events::ProcStartEvent;
 
 pub const MAP_SIZE: usize = 512;
 
+/// Maximum number of recently dead processes retained by the daemon.
+pub const DEAD_PROC_LIMIT: usize = 20;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatsBytes {
@@ -39,17 +42,17 @@ pub trait StatsMap {
     fn lookup_percpu(&self, key: &[u8]) -> Option<Vec<Vec<u8>>>;
 }
 
-#[derive(Debug)]
-struct ProcInfo {
-    pid: u32,
-    name: Box<str>,
-    tcp_cum: StatsBytes,
-    udp_cum: StatsBytes,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProcInfo {
+    pub pid: u32,
+    pub name: Box<str>,
+    pub tcp_cum: StatsBytes,
+    pub udp_cum: StatsBytes,
 }
 
 impl ProcInfo {
     #[must_use]
-    fn new<T>(pid: u32, name: T, tcp_cum: StatsBytes, udp_cum: StatsBytes) -> Self
+    pub fn new<T>(pid: u32, name: T, tcp_cum: StatsBytes, udp_cum: StatsBytes) -> Self
     where
         T: Into<Box<str>>,
     {
@@ -117,6 +120,7 @@ impl StatsRow {
 
 pub struct StatsCollector {
     procs: Vec<ProcInfo>,
+    dead_procs: Vec<ProcInfo>,
 }
 
 impl Default for StatsCollector {
@@ -130,7 +134,14 @@ impl StatsCollector {
     pub fn new() -> Self {
         Self {
             procs: Vec::with_capacity(MAP_SIZE),
+            dead_procs: Vec::with_capacity(DEAD_PROC_LIMIT),
         }
+    }
+
+    /// Read-only view of the recently dead processes.
+    #[must_use]
+    pub fn dead_procs(&self) -> &[ProcInfo] {
+        &self.dead_procs
     }
 
     pub fn reset(&mut self) {
@@ -138,6 +149,8 @@ impl StatsCollector {
             proc.tcp_cum = StatsBytes::default();
             proc.udp_cum = StatsBytes::default();
         }
+
+        self.dead_procs.clear();
     }
 
     pub fn apply_event(&mut self, mut event: ProcStartEvent) {
@@ -160,7 +173,11 @@ impl StatsCollector {
     pub fn collect_rows(&mut self, stats_map: &impl StatsMap, out: &mut Vec<StatsRow>) {
         out.clear();
 
-        self.procs.retain_mut(|proc_info| {
+        let mut idx: usize = 0;
+
+        while idx < self.procs.len() {
+            let proc_info = &mut self.procs[idx];
+
             if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
                 let tcp_delta = StatsBytes {
                     sent: new_stats.tcp.sent.saturating_sub(proc_info.tcp_cum.sent),
@@ -186,11 +203,16 @@ impl StatsCollector {
 
                 out.push(row);
 
-                true
+                idx += 1;
             } else {
-                false
+                let dead_proc = self.procs.swap_remove(idx);
+                self.dead_procs.push(dead_proc);
+
+                if self.dead_procs.len() > DEAD_PROC_LIMIT {
+                    self.dead_procs.remove(0);
+                }
             }
-        });
+        }
     }
 }
 
@@ -460,6 +482,82 @@ mod tests {
 
         assert!(rows.is_empty());
         assert!(stats.procs.is_empty());
+        assert_eq!(stats.dead_procs().len(), 1);
+        assert_eq!(stats.dead_procs()[0].pid, 140);
+
+        // A second tick where the proc is still gone must not duplicate it.
+        stats.collect_rows(&map, &mut rows);
+
+        assert_eq!(stats.dead_procs().len(), 1);
+    }
+
+    #[test]
+    fn dead_procs_capped_at_limit() {
+        let mut stats = StatsCollector::default();
+        let mut map = FakeStatsMap::default();
+
+        for pid in 0..u32::try_from(DEAD_PROC_LIMIT).unwrap() + 5 {
+            stats.apply_event(ProcStartEvent {
+                pid,
+                name: "p".into(),
+            });
+            map.data.insert(
+                pid.to_ne_bytes().to_vec(),
+                vec![proc_stats_bytes(
+                    StatsBytes::default(),
+                    StatsBytes::default(),
+                )],
+            );
+        }
+
+        let mut rows = Vec::<StatsRow>::new();
+
+        // Kill one proc per tick by removing it from the live map first.
+        for pid in 0..u32::try_from(DEAD_PROC_LIMIT).unwrap() + 5 {
+            map.remove(pid);
+            stats.collect_rows(&map, &mut rows);
+
+            assert!(
+                stats.dead_procs().len() <= DEAD_PROC_LIMIT,
+                "tick {}: dead_procs.len() = {}",
+                pid,
+                stats.dead_procs().len()
+            );
+        }
+
+        let kept: Vec<u32> = stats.dead_procs().iter().map(|p| p.pid).collect();
+        assert_eq!(kept.len(), DEAD_PROC_LIMIT);
+        // Most recent `DEAD_PROC_LIMIT` deaths are kept; oldest evicted first.
+        // 25 deaths total (pids 0..=24), so the kept window is pids 5..=24.
+        let total_dead = u32::try_from(DEAD_PROC_LIMIT).unwrap() + 5;
+        assert_eq!(
+            kept.first(),
+            Some(&(total_dead - u32::try_from(DEAD_PROC_LIMIT).unwrap()))
+        );
+        assert_eq!(kept.last(), Some(&(total_dead - 1)));
+        assert!(
+            kept.windows(2).all(|w| w[0] < w[1]),
+            "kept order is ascending"
+        );
+    }
+
+    #[test]
+    fn reset_clears_dead_procs() {
+        let mut stats = StatsCollector::default();
+        stats.apply_event(ProcStartEvent {
+            pid: 1,
+            name: "a".into(),
+        });
+        let map = FakeStatsMap::default();
+        let mut rows = Vec::new();
+
+        // pid 1 was never in the map, immediately counted as dead.
+        stats.collect_rows(&map, &mut rows);
+        assert_eq!(stats.dead_procs().len(), 1);
+
+        stats.reset();
+
+        assert!(stats.dead_procs().is_empty());
     }
 
     #[test]

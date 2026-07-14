@@ -158,7 +158,7 @@ static QUIT_KEYS: [Keybind; 2] = [
     },
 ];
 
-static MAIN_KEYS: [Keybind; 8] = [
+static MAIN_KEYS: [Keybind; 9] = [
     Keybind {
         key: KeySpec::Chars("+"),
         label: "interval",
@@ -216,6 +216,24 @@ static MAIN_KEYS: [Keybind; 8] = [
         bar: true,
         action: |state, _| {
             state.show_detail = !state.show_detail;
+            Action::Redraw
+        },
+    },
+    Keybind {
+        key: KeySpec::Chars("x"),
+        label: "dead",
+        section: Section::Other,
+        help: Help {
+            active: true,
+            group: None,
+            text: "Toggle the dead processes view",
+        },
+        bar: true,
+        action: |state, _| {
+            state.view_mode = state.view_mode.toggle();
+            state.selected_pid = None;
+            state.selected = 0;
+            state.scroll_offset = 0;
             Action::Redraw
         },
     },

@@ -1337,7 +1337,7 @@ dependencies = [
 
 [[package]]
 name = "procnet"
-version = "0.1.0"
+version = "0.3.5"
 dependencies = [
  "clap",
  "procnet-core",
@@ -1348,7 +1348,7 @@ dependencies = [
 
 [[package]]
 name = "procnet-core"
-version = "0.1.0"
+version = "0.3.5"
 dependencies = [
  "bincode",
  "clap",
@@ -1358,7 +1358,7 @@ dependencies = [
 
 [[package]]
 name = "procnetd"
-version = "0.1.0"
+version = "0.3.5"
 dependencies = [
  "anyhow",
  "env_logger",
