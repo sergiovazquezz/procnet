@@ -64,13 +64,14 @@ pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
             interval: state_guard.interval(),
             tick: state_guard.tick(),
             rows: &rows,
+            dead_procs: state_guard.stats.dead_procs(),
         };
+
+        ipc::write_msg(&mut buf, &snapshot)?;
 
         let timeout = Duration::from_millis(state_guard.interval());
 
         drop(state_guard);
-
-        ipc::write_msg(&mut buf, &snapshot)?;
 
         let shared: Arc<[u8]> = Arc::from(buf.as_slice());
 

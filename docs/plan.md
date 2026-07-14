@@ -14,8 +14,6 @@
 
 ## Features
 
-- A row with total network usage by active processes (maybe also dead).
-
 - Add a dead process section, with the possibility to remove any.
     - If a process with the same name exists merge the usage (optional).
 
@@ -31,6 +29,8 @@
 - Client: `--json`.
 
 ## Possible features
+
+- A row with total network usage by active processes (maybe also dead).
 
 - Add Unix sockets via `unix_stream_sendmsg` and `unix_stream_recvmsg`.
 
