@@ -1,65 +1,48 @@
+use std::os::unix::net::UnixStream;
+
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::tui::{
-    state::{Action, Pane, SortKey, TuiState, Unit},
-    view::clamp_scroll,
+    keys::KeySpec,
+    state::{Action, Pane, TuiState, Unit},
+    view,
 };
 
-#[derive(Clone, Copy)]
-enum Direction {
-    Down,
-    Up,
-}
-
-pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> Action {
-    match state.active_pane {
-        Pane::Help => handle_help_modal(state, key),
-        Pane::Unit => handle_unit_picker(state, key),
-        Pane::Filter => handle_filter_input(state, key),
-        Pane::Command => handle_command(state, key),
+pub fn handle_key(state: &mut TuiState, key: KeyEvent, stream: &mut UnixStream) -> Action {
+    if state.active_pane == Pane::Filter {
+        return handle_filter_input(state, key);
     }
-}
 
-#[expect(clippy::missing_const_for_fn)]
-fn handle_help_modal(state: &mut TuiState, key: KeyEvent) -> Action {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
-    match key.code {
-        KeyCode::Char('?' | 'h' | 'H') | KeyCode::Esc => {
-            state.active_pane = Pane::Command;
-            Action::Redraw
+    for group in state.active_pane.keybinds() {
+        for kb in *group {
+            if matches!(kb.key, KeySpec::Ctrl(_)) && !ctrl {
+                continue;
+            }
+
+            if key_matches(&kb.key, key.code) {
+                return (kb.action)(state, stream);
+            }
         }
-        KeyCode::Char('q' | 'Q') => Action::Quit,
-        KeyCode::Char('c' | 'C') if ctrl => Action::Quit,
-        _ => Action::None,
     }
+
+    Action::None
 }
 
-#[expect(clippy::missing_const_for_fn)]
-fn handle_unit_picker(state: &mut TuiState, key: KeyEvent) -> Action {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-    let len = Unit::ALL.len();
-    match key.code {
-        KeyCode::Up | KeyCode::Char('k' | 'K') => {
-            state.unit_picker_cursor = (state.unit_picker_cursor + len - 1) % len;
-            Action::Redraw
-        }
-        KeyCode::Down | KeyCode::Char('j' | 'J') => {
-            state.unit_picker_cursor = (state.unit_picker_cursor + 1) % len;
-            Action::Redraw
-        }
-        KeyCode::Enter => {
-            state.unit = Unit::ALL[state.unit_picker_cursor];
-            state.active_pane = Pane::Command;
-            Action::Redraw
-        }
-        KeyCode::Esc | KeyCode::Char('u' | 'U') => {
-            state.active_pane = Pane::Command;
-            Action::Redraw
-        }
-        KeyCode::Char('q' | 'Q') => Action::Quit,
-        KeyCode::Char('c' | 'C') if ctrl => Action::Quit,
-        _ => Action::None,
+fn key_matches(spec: &KeySpec, code: KeyCode) -> bool {
+    use KeySpec as S;
+
+    match (spec, code) {
+        (S::Chars(chars), KeyCode::Char(c)) => chars.contains(c.to_ascii_lowercase()),
+        (S::Ctrl(c), KeyCode::Char(ch)) => c == &ch.to_ascii_lowercase(),
+        (S::Up, KeyCode::Up)
+        | (S::Down, KeyCode::Down)
+        | (S::Enter, KeyCode::Enter)
+        | (S::Esc, KeyCode::Esc)
+        | (S::Backspace, KeyCode::Backspace)
+        | (S::Tab, KeyCode::Tab) => true,
+        _ => false,
     }
 }
 
@@ -75,11 +58,11 @@ fn handle_filter_input(state: &mut TuiState, key: KeyEvent) -> Action {
             state.filter_target = state.filter_target.toggle();
         }
         KeyCode::Esc => {
-            state.active_pane = Pane::Command;
+            state.active_pane = Pane::Main;
             state.filter_text.clear();
         }
         KeyCode::Enter => {
-            state.active_pane = Pane::Command;
+            state.active_pane = Pane::Main;
         }
         _ => return Action::None,
     }
@@ -87,86 +70,42 @@ fn handle_filter_input(state: &mut TuiState, key: KeyEvent) -> Action {
     Action::Redraw
 }
 
-fn handle_command(state: &mut TuiState, key: KeyEvent) -> Action {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+/// Move the cursor up (`is_up = true`) or down within the active pane.
+/// Both panes clamp at the boundaries.
+pub fn move_cursor(state: &mut TuiState, is_up: bool) -> Action {
+    match state.active_pane {
+        Pane::Main => {
+            let view_len = state.view.len();
+            if view_len == 0 {
+                return Action::None;
+            }
 
-    match key.code {
-        KeyCode::Char('q' | 'Q') => Action::Quit,
-        KeyCode::Char('c' | 'C') if ctrl => Action::Quit,
-        KeyCode::Char('r' | 'R') => {
-            state.sort_dir = state.sort_dir.toggle();
-            Action::Redraw
-        }
-        KeyCode::Char('u' | 'U') => {
-            state.active_pane = Pane::Unit;
-            state.unit_picker_cursor = state.unit.index();
-            Action::Redraw
-        }
-        KeyCode::Up | KeyCode::Char('k' | 'K') => {
-            move_cursor(state, Direction::Up);
-            Action::Redraw
-        }
-        KeyCode::Down | KeyCode::Char('j' | 'J') => {
-            move_cursor(state, Direction::Down);
-            Action::Redraw
-        }
-        KeyCode::Char('p' | 'P') => {
-            state.paused = !state.paused;
-            Action::Redraw
-        }
-        KeyCode::Char('d' | 'D') => {
-            state.show_detail = !state.show_detail;
-            Action::Redraw
-        }
-        KeyCode::Char(d) => {
-            if d == '?' || d == 'h' || d == 'H' {
-                state.active_pane = Pane::Help;
-                Action::Redraw
-            } else if let Some(new_key) = SortKey::from_digit(d) {
-                if state.sort_key == new_key {
-                    state.sort_dir = state.sort_dir.toggle();
-                } else {
-                    state.sort_key = new_key;
-                    state.sort_dir = new_key.default_direction();
-                }
-                Action::Redraw
-            } else if d == '/' {
-                state.active_pane = Pane::Filter;
-                Action::Redraw
+            let next = if is_up {
+                state.selected.saturating_sub(1)
             } else {
-                Action::None
-            }
+                (state.selected + 1).min(view_len - 1)
+            };
+
+            let (selected, scroll_offset) =
+                view::clamp_scroll(next, state.scroll_offset, state.visible_rows, view_len);
+
+            state.selected = selected;
+            state.scroll_offset = scroll_offset;
+            state.selected_pid = state.view_pids.get(selected).copied();
+
+            Action::Redraw
         }
-        KeyCode::Esc => {
-            if state.filter_text.is_empty() {
-                Action::None
+        Pane::Unit => {
+            let len = Unit::ALL.len();
+
+            state.unit_picker_cursor = if is_up {
+                state.unit_picker_cursor.saturating_sub(1)
             } else {
-                state.filter_text.clear();
-                Action::Redraw
-            }
+                (state.unit_picker_cursor + 1).min(len.saturating_sub(1))
+            };
+
+            Action::Redraw
         }
         _ => Action::None,
     }
-}
-
-/// Move the cursor within the last rendered view, keeping it on screen. The
-/// cursor locks onto the PID at the new index so it tracks that process across
-/// ticks.
-fn move_cursor(state: &mut TuiState, direction: Direction) {
-    let view_len = state.view.len();
-    if view_len == 0 {
-        return;
-    }
-
-    let next = match direction {
-        Direction::Down => (state.selected + 1).min(view_len - 1),
-        Direction::Up => state.selected.saturating_sub(1),
-    };
-
-    let (selected, scroll_offset) =
-        clamp_scroll(next, state.scroll_offset, state.visible_rows, view_len);
-
-    state.selected = selected;
-    state.scroll_offset = scroll_offset;
-    state.selected_pid = state.view_pids.get(selected).copied();
 }

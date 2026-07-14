@@ -1,12 +1,13 @@
-use ratatui::style::{Color, Modifier, Style};
+use std::borrow::Cow;
+
+use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 
 use crate::tui::state::Unit;
 
-/// 16-color ANSI palette used across the TUI. Sticking to the basic set for
-/// portability across terminals.
 pub mod color {
     use ratatui::style::Color;
+
     pub const ACCENT: Color = Color::Cyan;
     pub const MUTED: Color = Color::DarkGray;
     pub const OK: Color = Color::Green;
@@ -63,36 +64,14 @@ pub fn traffic_color(ratio: f64) -> Color {
     }
 }
 
-/// A key glyph shown as `[key]`. When `active`, it is rendered with an accent
-/// background so the current state is visible at a glance.
-pub fn key_span(key: &str, active: bool) -> Span<'static> {
-    let style = if active {
-        Style::new()
-            .bg(color::ACCENT)
-            .fg(color::INVERT_TEXT)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::new().fg(color::ACCENT).add_modifier(Modifier::BOLD)
-    };
-    Span::styled(format!("[{key}]"), style)
-}
-
-/// A muted label following a key chip.
-pub fn label_span(label: &str) -> Span<'static> {
-    Span::styled(label.to_string(), Style::new().fg(color::MUTED))
-}
-
-/// A ` │ ` separator between keybind groups.
 pub fn sep_span() -> Span<'static> {
-    Span::styled(" │ ".to_string(), Style::new().fg(color::MUTED))
+    Span::styled(" | ".to_string(), Style::new().fg(color::MUTED))
 }
 
-/// A span in the muted color.
-pub fn muted_span(s: &str) -> Span<'static> {
-    Span::styled(s.to_string(), Style::new().fg(color::MUTED))
+pub fn muted_span<'a, S: Into<Cow<'a, str>>>(s: S) -> Span<'a> {
+    Span::styled(s, Style::new().fg(color::MUTED))
 }
 
-/// A span in the accent color.
-pub fn accent_span(s: &str) -> Span<'static> {
-    Span::styled(s.to_string(), Style::new().fg(color::ACCENT))
+pub fn accent_span<'a, S: Into<Cow<'a, str>>>(s: S) -> Span<'a> {
+    Span::styled(s, Style::new().fg(color::ACCENT))
 }

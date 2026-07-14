@@ -46,13 +46,15 @@ impl DaemonState {
     pub fn update(&mut self, command: DaemonCommand) {
         match command {
             DaemonCommand::Run => {
-                unreachable!("Run is handled by procnetd::server::run_listener()")
+                unreachable!("Run is handled by procnetd::server")
             }
             DaemonCommand::Reset => {
                 self.stats.reset();
                 self.reset_tick();
             }
             DaemonCommand::Interval { interval } => self.set_interval(interval),
+            DaemonCommand::IntervalIncrease => self.set_interval(self.interval + 100),
+            DaemonCommand::IntervalDecrease => self.set_interval(self.interval - 100),
         }
     }
 }

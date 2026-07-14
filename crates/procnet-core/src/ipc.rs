@@ -35,6 +35,8 @@ pub enum DaemonCommand {
         #[arg(value_parser = value_parser!(u64).range(100..=5000))]
         interval: u64,
     },
+    IntervalIncrease,
+    IntervalDecrease,
     Reset,
 }
 

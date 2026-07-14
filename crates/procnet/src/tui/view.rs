@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table},
+    widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table},
 };
 
 use procnet_core::{
@@ -12,6 +12,7 @@ use procnet_core::{
 };
 
 use crate::tui::{
+    keys::{self, HelpGroup, KeySpec, Keybind, Section},
     state::{FilterTarget, Pane, SortDir, SortKey, TuiState, Unit},
     theme,
 };
@@ -115,7 +116,7 @@ pub fn render(frame: &mut Frame, snap: &SnapshotData, state: &mut TuiState) {
         Pane::Filter => render_filter_prompt(frame, layout[idx], state),
         Pane::Help => render_help(frame),
         Pane::Unit => render_unit_picker(frame, state),
-        Pane::Command => {}
+        Pane::Main => {}
     }
 }
 
@@ -124,8 +125,11 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         state.visible_rows = 0;
         state.view_pids.clear();
         frame.render_widget(
-            Paragraph::new("Waiting for process stats...")
-                .block(Block::default().borders(Borders::ALL)),
+            Paragraph::new("Waiting for process stats...").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            ),
             area,
         );
         return;
@@ -136,8 +140,11 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
         state.view_pids.clear();
 
         frame.render_widget(
-            Paragraph::new("No processes match the filter...")
-                .block(Block::default().borders(Borders::ALL)),
+            Paragraph::new("No processes match the filter...").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            ),
             area,
         );
 
@@ -271,7 +278,12 @@ fn render_table_widget(
         ],
     )
     .header(Row::new(header_cells))
-    .block(Block::default().borders(Borders::ALL).title_top(title))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title_top(title),
+    )
     .column_spacing(1);
 
     frame.render_widget(table, area);
@@ -301,15 +313,12 @@ fn render_detail(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &Tui
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw("  "),
-            Span::styled(
-                row.name.as_ref().to_string(),
-                Style::new().fg(theme::color::ACCENT),
-            ),
+            Span::raw(row.name.as_ref()),
         ]),
-        proto_line("TCP", row.tcp, tcp_cum, unit),
-        proto_line("UDP", row.udp, udp_cum, unit),
+        proto_line("TCP  ", row.tcp, tcp_cum, unit),
+        proto_line("UDP  ", row.udp, udp_cum, unit),
         Line::raw(""),
-        proto_line("Total", total, total_cum, unit),
+        proto_line("TOT  ", total, total_cum, unit),
     ];
 
     frame.render_widget(
@@ -351,6 +360,7 @@ fn proto_line(label: &str, tick: StatsBytes, cum: StatsBytes, unit: Unit) -> Lin
 fn detail_block(title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(theme::color::ACCENT))
         .title_top(
             Line::from(vec![
@@ -361,6 +371,7 @@ fn detail_block(title: &str) -> Block<'static> {
                         .fg(theme::color::ACCENT)
                         .add_modifier(Modifier::BOLD),
                 ),
+                Span::raw(" "),
             ])
             .left_aligned(),
         )
@@ -370,52 +381,58 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = vec![
         Span::raw(" "),
         Span::styled(
-            "procnet".to_string(),
+            "procnet",
             Style::new()
                 .fg(theme::color::ACCENT)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        theme::muted_span("Sort:"),
+        theme::muted_span("sort:"),
         Span::raw(" "),
-        theme::accent_span(
-            format!("{} {}", state.sort_key.label(), state.sort_dir.arrow()).as_str(),
-        ),
+        theme::accent_span(format!(
+            "{} {}",
+            state.sort_key.label(),
+            state.sort_dir.arrow()
+        )),
         Span::raw("  "),
-        theme::muted_span("Filter:"),
+        theme::muted_span("filter:"),
         Span::raw(" "),
         filter_summary_span(state),
         Span::raw("  "),
-        theme::muted_span("Unit:"),
+        theme::muted_span("unit:"),
         Span::raw(" "),
         theme::accent_span(state.unit.label()),
         Span::raw("  "),
-        theme::muted_span("Tick:"),
+        theme::muted_span("tick:"),
         Span::raw(" "),
-        theme::accent_span(tick.to_string().as_str()),
+        theme::accent_span(tick.to_string()),
         Span::raw("  "),
-        theme::muted_span("Interval:"),
+        theme::muted_span("interval:"),
         Span::raw(" "),
-        theme::accent_span(format!("{}ms", interval).as_str()),
+        theme::accent_span(format!("{}ms", interval)),
     ];
+
     if state.paused {
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             "PAUSED".to_string(),
-            Style::new()
-                .fg(theme::color::HOT)
-                .add_modifier(Modifier::BOLD),
+            Style::new().fg(theme::color::HOT),
         ));
     }
+
+    spans.push(Span::raw(" "));
+
     Line::from(spans).left_aligned()
 }
 
 /// Build the right-hand side of the title: the effective filter expression.
 fn filter_summary_span(state: &TuiState) -> Span<'static> {
     let text = state.filter_text.as_str();
+
     if text.is_empty() {
         return theme::muted_span("none");
     }
+
     Span::styled(
         format!("{}~\"{}\"", state.filter_target.label(), text),
         Style::new().fg(theme::color::ACCENT),
@@ -423,81 +440,74 @@ fn filter_summary_span(state: &TuiState) -> Span<'static> {
 }
 
 fn render_keybind_bar(frame: &mut Frame, area: Rect, state: &TuiState) {
-    let line = match state.active_pane {
-        Pane::Filter => Line::from(vec![
-            theme::key_span("Enter", false),
-            theme::label_span("apply"),
-            Span::raw(" "),
-            theme::key_span("Tab", false),
-            theme::label_span("name⇄pid"),
-            Span::raw(" "),
-            theme::key_span("Esc", false),
-            theme::label_span("cancel"),
-            theme::sep_span(),
-            theme::key_span("?", false),
-            theme::label_span("help"),
-        ]),
-        Pane::Unit => Line::from(vec![
-            theme::key_span("↑↓", false),
-            theme::label_span("move"),
-            Span::raw(" "),
-            theme::key_span("Enter", false),
-            theme::label_span("apply"),
-            Span::raw(" "),
-            theme::key_span("Esc", false),
-            theme::label_span("cancel"),
-            theme::sep_span(),
-            theme::key_span("?", false),
-            theme::label_span("help"),
-        ]),
-        _ => {
-            let mut spans: Vec<Span> = Vec::new();
-            for (i, k) in SortKey::ALL.iter().enumerate() {
-                if i > 0 {
-                    spans.push(Span::raw(" "));
-                }
-                spans.push(theme::key_span(k.digit().to_string().as_str(), false));
-                spans.push(theme::label_span(k.label()));
-            }
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("↑↓", false));
-            spans.push(theme::label_span("move"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("r", false));
-            spans.push(theme::label_span("reverse"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("u", false));
-            spans.push(theme::label_span("unit"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("/", false));
-            spans.push(theme::label_span("filter"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("d", state.show_detail));
-            spans.push(theme::label_span("details"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("p", state.paused));
-            spans.push(theme::label_span(if state.paused {
-                "resume"
-            } else {
-                "pause"
-            }));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("?", false));
-            spans.push(theme::label_span("help"));
-            spans.push(theme::sep_span());
-            spans.push(theme::key_span("q", false));
-            spans.push(theme::label_span("quit"));
-            Line::from(spans)
-        }
-    };
+    let mut spans: Vec<Span> = Vec::new();
+    let mut prev_vis_group: Option<usize> = None;
 
-    frame.render_widget(Paragraph::new(line), area);
+    for (gi, group) in state.active_pane.keybinds().iter().enumerate() {
+        for kb in *group {
+            if !kb.bar || kb.label.is_empty() {
+                continue;
+            }
+
+            match prev_vis_group.replace(gi) {
+                None => {}
+                Some(p) if p == gi => spans.push(Span::raw("  ")),
+                Some(_) => spans.push(theme::sep_span()),
+            }
+
+            spans.push(Span::raw(bar_display_key(kb)));
+            spans.push(Span::raw(" "));
+
+            let label_style = if bar_active(kb, state) {
+                Style::new().fg(theme::color::ACCENT)
+            } else {
+                Style::new().fg(theme::color::MUTED)
+            };
+
+            spans.push(Span::styled(bar_label(kb, state), label_style));
+        }
+    }
+
+    if !spans.is_empty() {
+        spans.push(Span::raw("  "));
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+fn bar_display_key(kb: &Keybind) -> &'static str {
+    match kb.key {
+        KeySpec::Chars("+" | "-") => "+-",
+        KeySpec::Chars(s) => s,
+        KeySpec::Up | KeySpec::Down => "↑↓",
+        KeySpec::Enter => "enter",
+        KeySpec::Esc => "esc",
+        KeySpec::Backspace => "bksp",
+        KeySpec::Tab => "tab",
+        KeySpec::Ctrl(_) => "",
+    }
+}
+
+fn bar_active(kb: &Keybind, state: &TuiState) -> bool {
+    match kb.label {
+        "pause" => state.paused,
+        "details" => state.show_detail,
+        _ => false,
+    }
+}
+
+fn bar_label(kb: &Keybind, state: &TuiState) -> &'static str {
+    if kb.label == "pause" {
+        if state.paused { "resume" } else { "pause" }
+    } else {
+        kb.label
+    }
 }
 
 /// The table layout grows a third row only while this is visible.
 fn render_filter_prompt(frame: &mut Frame, area: Rect, state: &TuiState) {
     let prompt = Line::from(vec![
-        theme::muted_span(format!("Filter by {}: ", state.filter_target.label()).as_str()),
+        theme::muted_span(format!("Filter by {}: ", state.filter_target.label())),
         Span::styled(
             state.filter_text.clone(),
             Style::new().fg(theme::color::ACCENT),
@@ -509,18 +519,12 @@ fn render_filter_prompt(frame: &mut Frame, area: Rect, state: &TuiState) {
 
 fn render_unit_picker(frame: &mut Frame, state: &TuiState) {
     let area = frame.area();
-    let height = u16::try_from(Unit::ALL.len()).unwrap_or(6) + 4;
+    let height = u16::try_from(Unit::ALL.len()).unwrap_or(6) + 3;
     let popup = centered_fixed(area, 22, height);
 
     frame.render_widget(Clear, popup);
 
-    let mut lines: Vec<Line> = Vec::with_capacity(Unit::ALL.len() + 1);
-    lines.push(Line::from(vec![Span::styled(
-        "unit".to_string(),
-        Style::new()
-            .fg(theme::color::ACCENT)
-            .add_modifier(Modifier::BOLD),
-    )]));
+    let mut lines: Vec<Line> = Vec::with_capacity(Unit::ALL.len());
 
     for (i, u) in Unit::ALL.iter().enumerate() {
         let is_cursor = i == state.unit_picker_cursor;
@@ -541,61 +545,92 @@ fn render_unit_picker(frame: &mut Frame, state: &TuiState) {
         )]));
     }
 
-    lines.push(Line::raw(""));
-    lines.push(Line::from(vec![theme::muted_span(
-        "↑↓ move  Enter apply  Esc cancel",
-    )]));
-
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::new().fg(theme::color::ACCENT));
+        .border_type(BorderType::Rounded)
+        .title_top(
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    "unit".to_string(),
+                    Style::new()
+                        .fg(theme::color::ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+            ])
+            .left_aligned(),
+        );
 
     frame.render_widget(Paragraph::new(Text::from(lines)).block(block), popup);
 }
 
 fn render_help(frame: &mut Frame) {
     let area = frame.area();
-    let popup = centered_fixed(area, 52, 24);
+    let popup = centered_fixed(area, 52, 22);
 
     frame.render_widget(Clear, popup);
 
-    let lines: Vec<Line> = vec![
-        Line::from(vec![
-            Span::styled(
-                "procnet".to_string(),
-                Style::new()
-                    .fg(theme::color::ACCENT)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            theme::muted_span("— keybindings"),
-        ]),
-        Line::raw(""),
-        section_header("Sorting"),
-        help_line("1-5", "Sort by PID / Name / Sent / Recv / Total"),
-        help_line("r", "Reverse current sort direction"),
-        Line::raw(""),
-        section_header("Navigation"),
-        help_line("↑↓ jk", "Move the cursor (it tracks the process)"),
-        help_line("d", "Toggle the per-process detail pane"),
-        Line::raw(""),
-        section_header("Filtering"),
-        help_line("/", "Start or edit filter"),
-        help_line("Tab", "Switch filter target (name ⇄ pid)"),
-        help_line("Enter", "Apply filter"),
-        help_line("BkSp", "Delete last character"),
-        help_line("Esc", "Cancel input, or clear applied filter"),
-        Line::raw(""),
-        section_header("Other"),
-        help_line("p", "Pause / resume the live feed"),
-        help_line("u", "Choose display unit (Auto/B/KB/MB/GB/TB)"),
-        help_line("?  h", "Toggle this help"),
-        help_line("q", "Quit  (Ctrl-C also works)"),
-    ];
+    let mut lines: Vec<Line> = Vec::new();
+
+    for sec in Section::ALL {
+        let mut entries: Vec<&Keybind> = Vec::new();
+
+        for group in keys::ALL {
+            for kb in group {
+                if kb.help.active && kb.section == sec {
+                    entries.push(kb);
+                }
+            }
+        }
+
+        if entries.is_empty() {
+            continue;
+        }
+
+        lines.push(section_header(sec.text()));
+
+        let mut seen: Vec<HelpGroup> = Vec::new();
+
+        for kb in entries {
+            if let Some(g) = kb.help.group {
+                if seen.contains(&g) {
+                    continue;
+                }
+
+                seen.push(g);
+
+                lines.push(help_line(g.glyph(), g.text()));
+            } else {
+                let glyph = bar_display_key(kb);
+
+                lines.push(help_line(glyph, kb.help.text));
+            }
+        }
+
+        lines.push(Line::raw(""));
+    }
+
+    if matches!(lines.last(), Some(l) if l.spans.is_empty()) {
+        lines.pop();
+    }
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::new().fg(theme::color::ACCENT));
+        .border_type(BorderType::Rounded)
+        .title_top(
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(
+                    "help".to_string(),
+                    Style::new()
+                        .fg(theme::color::ACCENT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+            ])
+            .left_aligned(),
+        );
 
     frame.render_widget(Paragraph::new(Text::from(lines)).block(block), popup);
 }
@@ -609,7 +644,7 @@ fn section_header(label: &str) -> Line<'static> {
     )])
 }
 
-fn help_line(key: &str, desc: &str) -> Line<'static> {
+fn help_line(key: &'static str, desc: &'static str) -> Line<'static> {
     Line::from(vec![
         Span::raw(" "),
         Span::styled(
