@@ -1,4 +1,8 @@
-#include "vmlinux.h"
+#ifdef __TARGET_ARCH_arm64
+#include "vmlinux_arm64.h"
+#else
+#include "vmlinux_x86_64.h"
+#endif
 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>

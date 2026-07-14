@@ -87,8 +87,6 @@
             ]
           }";
 
-          PROCNET_SKIP_VMLINUX_GEN = "1";
-
           doCheck = false;
 
           meta = {

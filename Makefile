@@ -1,7 +1,7 @@
 .PHONY: lint test clear-logs build-release run-release run-daemon run-client \
 	build-profile run-profile run-daemon-profile run-client-profile \
 	stats record flamegraph heaptrack clean install-caps \
-	install uninstall
+	install uninstall regen-vmlinux
 
 
 PID_FILE        := /tmp/procnetd.pid
@@ -75,3 +75,8 @@ clean:
 	cargo clean
 	@rm -f perf.data perf.data.old flamegraph.svg
 	@rm -rf logs
+
+
+# vmlinux.h
+regen-vmlinux:
+	@./scripts/regen-vmlinux.sh
