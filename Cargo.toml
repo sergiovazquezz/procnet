@@ -3,7 +3,7 @@ members = ["crates/procnet-core", "crates/procnetd", "crates/procnet"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.3.5"
 edition = "2024"
 
 [workspace.lints.rust]
