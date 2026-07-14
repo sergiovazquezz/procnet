@@ -1,5 +1,5 @@
 name: procnet
-arch: amd64
+arch: ${PROCNET_ARCH}
 platform: linux
 version: ${PROCNET_VERSION}
 section: net

@@ -10,7 +10,21 @@ permissions:
 
 jobs:
   build-deb-tar:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: x86_64
+            runner: ubuntu-latest
+            procnet_arch: amd64
+            tar_arch: x86_64
+            nfpm_asset: Linux_x86_64
+          - os: arm64
+            runner: ubuntu-24.04-arm
+            procnet_arch: arm64
+            tar_arch: aarch64
+            nfpm_asset: Linux_arm64
+    runs-on: ${{ matrix.runner }}
     env:
       PROCNET_SKIP_VMLINUX_GEN: "1"
     steps:
@@ -37,13 +51,14 @@ jobs:
           set -euo pipefail
           nfpm_version="2.47.0"
           curl -fsSL -o /tmp/nfpm.tar.gz \
-            "https://github.com/goreleaser/nfpm/releases/download/v${nfpm_version}/nfpm_${nfpm_version}_Linux_x86_64.tar.gz"
+            "https://github.com/goreleaser/nfpm/releases/download/v${nfpm_version}/nfpm_${nfpm_version}_${matrix.nfpm_asset}.tar.gz"
           sudo tar -xzf /tmp/nfpm.tar.gz -C /usr/local/bin nfpm
           nfpm --version
 
       - name: Build .deb
         env:
           PROCNET_VERSION: ${{ steps.version.outputs.version }}
+          PROCNET_ARCH: ${{ matrix.procnet_arch }}
         run: |
           mkdir -p dist
           nfpm package -p deb -t dist/ -f packaging/nfpm.yaml
@@ -54,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           ver="$PROCNET_VERSION"
-          staging="procnet-${ver}-x86_64-linux"
+          staging="procnet-${ver}-${{ matrix.tar_arch }}-linux"
           mkdir -p "$staging"
           install -m 0755 target/release/procnetd "$staging/procnetd"
           install -m 0755 target/release/procnet  "$staging/procnet"
@@ -67,7 +82,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-deb-tar
+          name: dist-deb-tar-${{ matrix.os }}
           path: dist/*
           if-no-files-found: error
 
@@ -112,6 +127,7 @@ jobs:
       - name: Build .rpm
         env:
           PROCNET_VERSION: ${{ steps.version.outputs.version }}
+          PROCNET_ARCH: amd64
         run: |
           mkdir -p dist
           nfpm package -p rpm -t dist/ -f packaging/nfpm.yaml
