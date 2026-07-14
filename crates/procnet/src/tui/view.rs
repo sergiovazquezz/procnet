@@ -8,12 +8,12 @@ use ratatui::{
 
 use procnet_core::{
     ipc::SnapshotData,
-    stats::{StatsBytes, StatsRow},
+    stats::{ProcInfo, StatsBytes, StatsRow},
 };
 
 use crate::tui::{
     keys::{self, HelpGroup, KeySpec, Keybind, Section},
-    state::{FilterTarget, Pane, SortDir, SortKey, TuiState, Unit},
+    state::{FilterTarget, Pane, SortDir, SortKey, TuiState, Unit, ViewMode},
     theme,
 };
 
@@ -36,6 +36,35 @@ pub fn sort_rows(rows: &[StatsRow], indices: &mut [usize], key: SortKey, dir: So
 
         primary.then_with(|| ra.pid.cmp(&rb.pid))
     });
+}
+
+/// Sort a slice of indices into `procs` using the same column semantics as
+/// `sort_rows`, but sourcing cumulative bytes from `ProcInfo`.
+pub fn sort_dead_procs(procs: &[ProcInfo], indices: &mut [usize], key: SortKey, dir: SortDir) {
+    indices.sort_by(|&a, &b| {
+        let (pa, pb) = (&procs[a], &procs[b]);
+        let (ta, tb) = (dead_total(pa), dead_total(pb));
+        let primary = match key {
+            SortKey::Pid => pa.pid.cmp(&pb.pid),
+            SortKey::Name => pa.name.cmp(&pb.name),
+            SortKey::Sent => ta.sent.cmp(&tb.sent),
+            SortKey::Recv => ta.recv.cmp(&tb.recv),
+            SortKey::Total => ta.combine().cmp(&tb.combine()),
+        };
+
+        let primary = if dir == SortDir::Desc {
+            primary.reverse()
+        } else {
+            primary
+        };
+
+        primary.then_with(|| pa.pid.cmp(&pb.pid))
+    });
+}
+
+/// Per-protocol cumulative totals for a dead process: TCP + UDP combined.
+const fn dead_total(p: &ProcInfo) -> StatsBytes {
+    p.tcp_cum.merge(p.udp_cum)
 }
 
 /// Clamp the cursor and scroll offset so the selected row stays inside the
@@ -72,24 +101,52 @@ pub fn clamp_scroll(
 
 pub fn render(frame: &mut Frame, snap: &SnapshotData, state: &mut TuiState) {
     state.view.clear();
-    if !snap.rows.is_empty() {
-        if state.filter_text.is_empty() {
-            state.view.extend(0..snap.rows.len());
-        } else {
-            let needle = state.filter_text.to_ascii_lowercase();
-            let filt = state.filter_target;
-            state.view.extend(
-                snap.rows
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, row)| match filt {
-                        FilterTarget::Name => row.name.contains(&needle).then_some(i),
-                        FilterTarget::Pid => row.pid.to_string().contains(&needle).then_some(i),
-                    }),
-            );
-        }
+    match state.view_mode {
+        ViewMode::Live => {
+            if !snap.rows.is_empty() {
+                if state.filter_text.is_empty() {
+                    state.view.extend(0..snap.rows.len());
+                } else {
+                    let needle = state.filter_text.to_ascii_lowercase();
+                    let filt = state.filter_target;
+                    state.view.extend(snap.rows.iter().enumerate().filter_map(
+                        |(i, row)| match filt {
+                            FilterTarget::Name => row.name.contains(&needle).then_some(i),
+                            FilterTarget::Pid => row.pid.to_string().contains(&needle).then_some(i),
+                        },
+                    ));
+                }
 
-        sort_rows(&snap.rows, &mut state.view, state.sort_key, state.sort_dir);
+                sort_rows(&snap.rows, &mut state.view, state.sort_key, state.sort_dir);
+            }
+        }
+        ViewMode::Dead => {
+            if !snap.dead_procs.is_empty() {
+                if state.filter_text.is_empty() {
+                    state.view.extend(0..snap.dead_procs.len());
+                } else {
+                    let needle = state.filter_text.to_ascii_lowercase();
+                    let filt = state.filter_target;
+                    state
+                        .view
+                        .extend(snap.dead_procs.iter().enumerate().filter_map(
+                            |(i, proc)| match filt {
+                                FilterTarget::Name => proc.name.contains(&needle).then_some(i),
+                                FilterTarget::Pid => {
+                                    proc.pid.to_string().contains(&needle).then_some(i)
+                                }
+                            },
+                        ));
+                }
+
+                sort_dead_procs(
+                    &snap.dead_procs,
+                    &mut state.view,
+                    state.sort_key,
+                    state.sort_dir,
+                );
+            }
+        }
     }
 
     let mut constraints = vec![Constraint::Min(1)];
@@ -103,7 +160,10 @@ pub fn render(frame: &mut Frame, snap: &SnapshotData, state: &mut TuiState) {
     let layout = Layout::vertical(constraints).split(frame.area());
 
     let mut idx = 0;
-    render_table(frame, layout[idx], snap, state);
+    match state.view_mode {
+        ViewMode::Live => render_table(frame, layout[idx], snap, state),
+        ViewMode::Dead => render_dead_table(frame, layout[idx], snap, state),
+    }
     idx += 1;
     if state.show_detail {
         render_detail(frame, layout[idx], snap, state);
@@ -203,11 +263,172 @@ fn render_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut 
     );
 }
 
+fn render_dead_table(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &mut TuiState) {
+    if snap.dead_procs.is_empty() {
+        state.visible_rows = 0;
+        state.view_pids.clear();
+        frame.render_widget(
+            Paragraph::new("No dead processes yet.").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            ),
+            area,
+        );
+        return;
+    }
+
+    if state.view.is_empty() {
+        state.visible_rows = 0;
+        state.view_pids.clear();
+
+        frame.render_widget(
+            Paragraph::new("No dead processes match the filter...").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            ),
+            area,
+        );
+
+        return;
+    }
+
+    // Resolve the cursor from the same PID-lock pattern used by `render_table`.
+    let (selected, resolved_pid) = state
+        .selected_pid
+        .and_then(|pid| {
+            state
+                .view
+                .iter()
+                .position(|&i| snap.dead_procs[i].pid == pid)
+                .map(|i| (i, Some(pid)))
+        })
+        .unwrap_or((0, None));
+
+    let visible_rows = area.height.saturating_sub(3);
+    let (selected, scroll_offset) = clamp_scroll(
+        selected,
+        state.scroll_offset,
+        visible_rows,
+        state.view.len(),
+    );
+
+    let max_total = state
+        .view
+        .iter()
+        .map(|&i| dead_total(&snap.dead_procs[i]).combine())
+        .max()
+        .unwrap_or(0);
+
+    state.selected = selected;
+    state.scroll_offset = scroll_offset;
+    state.visible_rows = visible_rows;
+    state.view_pids.clear();
+    state
+        .view_pids
+        .extend(state.view.iter().map(|&i| snap.dead_procs[i].pid));
+    state.selected_pid = resolved_pid;
+
+    render_dead_table_widget(
+        frame,
+        area,
+        snap,
+        state,
+        ViewWindow {
+            selected,
+            scroll_offset,
+            visible_rows,
+            max_total,
+        },
+    );
+}
+
 struct ViewWindow {
     selected: usize,
     scroll_offset: usize,
     visible_rows: u16,
     max_total: u64,
+}
+
+fn render_dead_table_widget(
+    frame: &mut Frame,
+    area: Rect,
+    snap: &SnapshotData,
+    state: &TuiState,
+    window: ViewWindow,
+) {
+    let view_len = state.view.len();
+    let end = (window.scroll_offset + window.visible_rows as usize).min(view_len);
+    let display = &state.view[window.scroll_offset..end];
+
+    let table_rows = display.iter().enumerate().map(|(i, &idx)| {
+        let proc = &snap.dead_procs[idx];
+        let total = dead_total(proc);
+        let is_selected = window.scroll_offset + i == window.selected;
+        let base_style = if is_selected {
+            Style::new()
+                .bg(theme::color::ACCENT)
+                .fg(theme::color::INVERT_TEXT)
+        } else {
+            Style::new()
+        };
+
+        let total_style = if is_selected {
+            base_style
+        } else if window.max_total > 0 {
+            Style::new().fg(theme::traffic_color(
+                total.combine() as f64 / window.max_total as f64,
+            ))
+        } else {
+            Style::new()
+        };
+
+        Row::new([
+            Cell::from(proc.pid.to_string()),
+            Cell::from(proc.name.as_ref()),
+            Cell::from(theme::format_bytes(total.sent, state.unit)),
+            Cell::from(theme::format_bytes(total.recv, state.unit)),
+            Cell::from(theme::format_bytes(total.combine(), state.unit)).style(total_style),
+        ])
+        .style(base_style)
+    });
+
+    let header_cells = SortKey::ALL.map(|k| {
+        let style = match k {
+            SortKey::Sent => Style::new()
+                .fg(theme::color::SENT)
+                .add_modifier(Modifier::BOLD),
+            SortKey::Recv => Style::new()
+                .fg(theme::color::RECV)
+                .add_modifier(Modifier::BOLD),
+            _ => Style::new().fg(theme::color::MUTED),
+        };
+        Cell::from(k.label()).style(style)
+    });
+
+    let title = table_title(state, snap.tick, snap.interval);
+
+    let table = Table::new(
+        table_rows,
+        [
+            Constraint::Length(8),
+            Constraint::Min(12),
+            Constraint::Length(12),
+            Constraint::Length(12),
+            Constraint::Length(12),
+        ],
+    )
+    .header(Row::new(header_cells))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title_top(title),
+    )
+    .column_spacing(1);
+
+    frame.render_widget(table, area);
 }
 
 fn render_table_widget(
@@ -297,34 +518,84 @@ fn render_detail(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &Tui
         );
         return;
     };
-    let row = &snap.rows[idx];
 
-    let unit = state.unit;
-    let (tcp_cum, udp_cum) = row.cum();
-    let total = row.total();
-    let total_cum = row.total_cum();
+    let lines = match state.view_mode {
+        ViewMode::Live => {
+            let row = &snap.rows[idx];
+            let unit = state.unit;
+            let (tcp_cum, udp_cum) = row.cum();
+            let total = row.total();
+            let total_cum = row.total_cum();
 
-    let lines = vec![
-        Line::from(vec![
-            Span::styled(
-                row.pid.to_string(),
-                Style::new()
-                    .fg(theme::color::ACCENT)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("  "),
-            Span::raw(row.name.as_ref()),
-        ]),
-        proto_line("TCP  ", row.tcp, tcp_cum, unit),
-        proto_line("UDP  ", row.udp, udp_cum, unit),
-        Line::raw(""),
-        proto_line("TOT  ", total, total_cum, unit),
-    ];
+            vec![
+                Line::from(vec![
+                    Span::styled(
+                        row.pid.to_string(),
+                        Style::new()
+                            .fg(theme::color::ACCENT)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("  "),
+                    Span::raw(row.name.as_ref()),
+                ]),
+                proto_line("TCP  ", row.tcp, tcp_cum, unit),
+                proto_line("UDP  ", row.udp, udp_cum, unit),
+                Line::raw(""),
+                proto_line("TOT  ", total, total_cum, unit),
+            ]
+        }
+        ViewMode::Dead => {
+            let proc = &snap.dead_procs[idx];
+            let unit = state.unit;
+            let total_cum = dead_total(proc);
+
+            vec![
+                Line::from(vec![
+                    Span::styled(
+                        proc.pid.to_string(),
+                        Style::new()
+                            .fg(theme::color::ACCENT)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("  "),
+                    Span::raw(proc.name.as_ref()),
+                ]),
+                cum_only_line("TCP  ", proc.tcp_cum, unit),
+                cum_only_line("UDP  ", proc.udp_cum, unit),
+                Line::raw(""),
+                cum_only_line("TOT  ", total_cum, unit),
+            ]
+        }
+    };
 
     frame.render_widget(
         Paragraph::new(Text::from(lines)).block(detail_block("details")),
         area,
     );
+}
+
+/// Like `proto_line` but cumulative-only: dead processes have no per-tick
+/// delta, so the tick slot is rendered as a dash instead of a misleading 0.
+fn cum_only_line(label: &str, cum: StatsBytes, unit: Unit) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("{label:<5}"),
+            Style::new()
+                .fg(theme::color::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        ),
+        theme::muted_span("sent: "),
+        Span::styled(
+            theme::format_bytes(cum.sent, unit),
+            Style::new().fg(theme::color::SENT),
+        ),
+        Span::raw("   "),
+        theme::muted_span("recv: "),
+        Span::styled(
+            theme::format_bytes(cum.recv, unit),
+            Style::new().fg(theme::color::RECV),
+        ),
+    ])
 }
 
 fn proto_line(label: &str, tick: StatsBytes, cum: StatsBytes, unit: Unit) -> Line<'static> {
@@ -420,6 +691,16 @@ fn table_title(state: &TuiState, tick: u64, interval: u64) -> Line<'static> {
         ));
     }
 
+    if state.view_mode == ViewMode::Dead {
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            "DEAD".to_string(),
+            Style::new()
+                .fg(theme::color::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
     spans.push(Span::raw(" "));
 
     Line::from(spans).left_aligned()
@@ -492,6 +773,7 @@ fn bar_active(kb: &Keybind, state: &TuiState) -> bool {
     match kb.label {
         "pause" => state.paused,
         "details" => state.show_detail,
+        "dead" => state.view_mode == ViewMode::Dead,
         _ => false,
     }
 }
@@ -799,6 +1081,124 @@ mod tests {
 
         sort_rows(&rows, &mut idx, SortKey::Total, SortDir::Asc);
         assert_eq!(pids(&rows, &idx), vec![1, 2, 3]);
+    }
+
+    fn dead_proc(pid: u32, name: &str, tcp_cum: (u64, u64), udp_cum: (u64, u64)) -> ProcInfo {
+        ProcInfo::new(
+            pid,
+            name,
+            StatsBytes {
+                sent: tcp_cum.0,
+                recv: tcp_cum.1,
+            },
+            StatsBytes {
+                sent: udp_cum.0,
+                recv: udp_cum.1,
+            },
+        )
+    }
+
+    fn dead_pids(procs: &[ProcInfo], idx: &[usize]) -> Vec<u32> {
+        idx.iter().map(|&i| procs[i].pid).collect()
+    }
+
+    #[test]
+    fn sort_dead_procs_by_sent_desc_and_asc() {
+        // sent column = tcp_cum.sent + udp_cum.sent.
+        let procs = [
+            dead_proc(1, "a", (10, 0), (0, 0)),
+            dead_proc(2, "b", (50, 0), (0, 0)),
+            dead_proc(3, "c", (30, 0), (0, 0)),
+        ];
+        let mut idx: Vec<usize> = (0..procs.len()).collect();
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Sent, SortDir::Desc);
+        assert_eq!(dead_pids(&procs, &idx), vec![2, 3, 1]);
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Sent, SortDir::Asc);
+        assert_eq!(dead_pids(&procs, &idx), vec![1, 3, 2]);
+    }
+
+    #[test]
+    fn sort_dead_procs_by_recv_desc_and_asc() {
+        // recv column = tcp_cum.recv + udp_cum.recv.
+        let procs = [
+            dead_proc(1, "a", (0, 10), (0, 0)),
+            dead_proc(2, "b", (0, 50), (0, 0)),
+            dead_proc(3, "c", (0, 30), (0, 0)),
+        ];
+        let mut idx: Vec<usize> = (0..procs.len()).collect();
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Recv, SortDir::Desc);
+        assert_eq!(dead_pids(&procs, &idx), vec![2, 3, 1]);
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Recv, SortDir::Asc);
+        assert_eq!(dead_pids(&procs, &idx), vec![1, 3, 2]);
+    }
+
+    #[test]
+    fn sort_dead_procs_by_total_desc_and_asc() {
+        // total = sent + recv across both protocols.
+        let procs = [
+            dead_proc(1, "a", (10, 5), (0, 0)), // 15
+            dead_proc(2, "b", (50, 5), (0, 0)), // 55
+            dead_proc(3, "c", (30, 5), (0, 0)), // 35
+        ];
+        let mut idx: Vec<usize> = (0..procs.len()).collect();
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Total, SortDir::Desc);
+        assert_eq!(dead_pids(&procs, &idx), vec![2, 3, 1]);
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Total, SortDir::Asc);
+        assert_eq!(dead_pids(&procs, &idx), vec![1, 3, 2]);
+    }
+
+    #[test]
+    fn sort_dead_procs_by_name_asc_and_desc() {
+        let procs = [
+            dead_proc(1, "charlie", (0, 0), (0, 0)),
+            dead_proc(2, "alpha", (0, 0), (0, 0)),
+            dead_proc(3, "bravo", (0, 0), (0, 0)),
+        ];
+        let mut idx: Vec<usize> = (0..procs.len()).collect();
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Name, SortDir::Asc);
+        assert_eq!(dead_pids(&procs, &idx), vec![2, 3, 1]);
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Name, SortDir::Desc);
+        assert_eq!(dead_pids(&procs, &idx), vec![1, 3, 2]);
+    }
+
+    #[test]
+    fn sort_dead_procs_by_pid_asc_and_desc() {
+        let procs = [
+            dead_proc(30, "c", (0, 0), (0, 0)),
+            dead_proc(10, "a", (0, 0), (0, 0)),
+            dead_proc(20, "b", (0, 0), (0, 0)),
+        ];
+        let mut idx: Vec<usize> = (0..procs.len()).collect();
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Pid, SortDir::Asc);
+        assert_eq!(dead_pids(&procs, &idx), vec![10, 20, 30]);
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Pid, SortDir::Desc);
+        assert_eq!(dead_pids(&procs, &idx), vec![30, 20, 10]);
+    }
+
+    #[test]
+    fn sort_dead_procs_tie_breaks_by_pid_ascending_regardless_of_dir() {
+        let procs = [
+            dead_proc(2, "b", (10, 0), (0, 0)),
+            dead_proc(1, "a", (10, 0), (0, 0)),
+            dead_proc(3, "c", (10, 0), (0, 0)),
+        ];
+        let mut idx: Vec<usize> = (0..procs.len()).collect();
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Total, SortDir::Desc);
+        assert_eq!(dead_pids(&procs, &idx), vec![1, 2, 3]);
+
+        sort_dead_procs(&procs, &mut idx, SortKey::Total, SortDir::Asc);
+        assert_eq!(dead_pids(&procs, &idx), vec![1, 2, 3]);
     }
 
     #[test]
