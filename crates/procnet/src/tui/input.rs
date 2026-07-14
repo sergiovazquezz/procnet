@@ -1,3 +1,5 @@
+use std::os::unix::net::UnixStream;
+
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::tui::{
@@ -6,7 +8,7 @@ use crate::tui::{
     view,
 };
 
-pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> Action {
+pub fn handle_key(state: &mut TuiState, key: KeyEvent, stream: &mut UnixStream) -> Action {
     if state.active_pane == Pane::Filter {
         return handle_filter_input(state, key);
     }
@@ -20,7 +22,7 @@ pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> Action {
             }
 
             if key_matches(&kb.key, key.code) {
-                return (kb.action)(state);
+                return (kb.action)(state, stream);
             }
         }
     }

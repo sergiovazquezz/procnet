@@ -7,6 +7,8 @@ use thiserror::Error;
 pub enum ClientError {
     #[error("Socket connection error: {0}")]
     SocketConnection(#[from] ConnectError),
+    #[error("Could not clone socket: {0}")]
+    StreamClone(#[from] io::Error),
     #[error("{0}")]
     MsgSendError(#[from] MsgSendError),
     #[error("Tui error: {0}")]

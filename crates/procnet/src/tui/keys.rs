@@ -1,6 +1,13 @@
-use crate::tui::{
-    Action, input,
-    state::{Pane, SortKey, TuiState, Unit},
+use std::os::unix::net::UnixStream;
+
+use procnet_core::ipc::DaemonCommand;
+
+use crate::{
+    cli,
+    tui::{
+        Action, input,
+        state::{Pane, SortKey, TuiState, Unit},
+    },
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,6 +50,7 @@ impl Section {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum HelpGroup {
+    Interval,
     SortNums,
     Move,
 }
@@ -50,8 +58,9 @@ pub enum HelpGroup {
 impl HelpGroup {
     pub const fn text(self) -> &'static str {
         match self {
-            Self::SortNums => "Sort by PID / Name / Sent / Recv / Total",
-            Self::Move => "Move the cursor (it tracks the process)",
+            Self::Interval => "Increase or decrease the interval",
+            Self::SortNums => "Sort by pid / name / sent / recv / total",
+            Self::Move => "Move the cursor",
         }
     }
 }
@@ -92,7 +101,7 @@ pub struct Keybind {
     /// Whether this binding should appear in the keybind bar of its pane.
     pub bar: bool,
 
-    pub action: fn(&mut TuiState) -> Action,
+    pub action: fn(&mut TuiState, &mut UnixStream) -> Action,
 }
 
 fn apply_sort(s: &mut TuiState, key: SortKey) -> Action {
@@ -134,7 +143,7 @@ static QUIT_KEYS: [Keybind; 2] = [
         },
         help_glyph: "",
         bar: true,
-        action: |_| Action::Quit,
+        action: |_, _| Action::Quit,
     },
     Keybind {
         key: KeySpec::Ctrl('c'),
@@ -147,11 +156,43 @@ static QUIT_KEYS: [Keybind; 2] = [
         },
         help_glyph: "",
         bar: false,
-        action: |_| Action::Quit,
+        action: |_, _| Action::Quit,
     },
 ];
 
-static MAIN_KEYS: [Keybind; 6] = [
+static MAIN_KEYS: [Keybind; 8] = [
+    Keybind {
+        key: KeySpec::Chars("+"),
+        label: "increase interval",
+        section: Section::Other,
+        help: Help {
+            active: true,
+            group: Some(HelpGroup::Interval),
+            text: "",
+        },
+        help_glyph: "+-",
+        bar: true,
+        action: |_, stream| {
+            let _ = cli::send_daemon_command(DaemonCommand::IntervalIncrease, stream);
+            Action::None
+        },
+    },
+    Keybind {
+        key: KeySpec::Chars("-"),
+        label: "decrease interval",
+        section: Section::Other,
+        help: Help {
+            active: true,
+            group: Some(HelpGroup::Interval),
+            text: "",
+        },
+        help_glyph: "",
+        bar: true,
+        action: |_, stream| {
+            let _ = cli::send_daemon_command(DaemonCommand::IntervalDecrease, stream);
+            Action::None
+        },
+    },
     Keybind {
         key: KeySpec::Chars("p"),
         label: "pause",
@@ -163,8 +204,8 @@ static MAIN_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.paused = !s.paused;
+        action: |state, _| {
+            state.paused = !state.paused;
             Action::Redraw
         },
     },
@@ -179,8 +220,8 @@ static MAIN_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.show_detail = !s.show_detail;
+        action: |state, _| {
+            state.show_detail = !state.show_detail;
             Action::Redraw
         },
     },
@@ -195,9 +236,9 @@ static MAIN_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.active_pane = Pane::Unit;
-            s.unit_picker_cursor = s.unit.index();
+        action: |state, _| {
+            state.active_pane = Pane::Unit;
+            state.unit_picker_cursor = state.unit.index();
             Action::Redraw
         },
     },
@@ -212,8 +253,8 @@ static MAIN_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.active_pane = Pane::Filter;
+        action: |state, _| {
+            state.active_pane = Pane::Filter;
             Action::Redraw
         },
     },
@@ -228,8 +269,8 @@ static MAIN_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.active_pane = Pane::Help;
+        action: |state, _| {
+            state.active_pane = Pane::Help;
             Action::Redraw
         },
     },
@@ -244,11 +285,11 @@ static MAIN_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: false,
-        action: |s| {
-            if s.filter_text.is_empty() {
+        action: |state, _| {
+            if state.filter_text.is_empty() {
                 Action::None
             } else {
-                s.filter_text.clear();
+                state.filter_text.clear();
                 Action::Redraw
             }
         },
@@ -267,9 +308,9 @@ static UNIT_PICKER_KEYS: [Keybind; 2] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.unit = Unit::ALL[s.unit_picker_cursor];
-            s.active_pane = Pane::Main;
+        action: |state, _| {
+            state.unit = Unit::ALL[state.unit_picker_cursor];
+            state.active_pane = Pane::Main;
             Action::Redraw
         },
     },
@@ -284,8 +325,8 @@ static UNIT_PICKER_KEYS: [Keybind; 2] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.active_pane = Pane::Main;
+        action: |state, _| {
+            state.active_pane = Pane::Main;
             Action::Redraw
         },
     },
@@ -303,8 +344,8 @@ static SORT_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| {
-            s.sort_dir = s.sort_dir.toggle();
+        action: |state, _| {
+            state.sort_dir = state.sort_dir.toggle();
             Action::Redraw
         },
     },
@@ -319,7 +360,7 @@ static SORT_KEYS: [Keybind; 6] = [
         },
         help_glyph: "1-5",
         bar: true,
-        action: |s| apply_sort(s, SortKey::Pid),
+        action: |state, _| apply_sort(state, SortKey::Pid),
     },
     Keybind {
         key: KeySpec::Chars("2"),
@@ -332,7 +373,7 @@ static SORT_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| apply_sort(s, SortKey::Name),
+        action: |state, _| apply_sort(state, SortKey::Name),
     },
     Keybind {
         key: KeySpec::Chars("3"),
@@ -345,7 +386,7 @@ static SORT_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| apply_sort(s, SortKey::Sent),
+        action: |state, _| apply_sort(state, SortKey::Sent),
     },
     Keybind {
         key: KeySpec::Chars("4"),
@@ -358,7 +399,7 @@ static SORT_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| apply_sort(s, SortKey::Recv),
+        action: |state, _| apply_sort(state, SortKey::Recv),
     },
     Keybind {
         key: KeySpec::Chars("5"),
@@ -371,7 +412,7 @@ static SORT_KEYS: [Keybind; 6] = [
         },
         help_glyph: "",
         bar: true,
-        action: |s| apply_sort(s, SortKey::Total),
+        action: |state, _| apply_sort(state, SortKey::Total),
     },
 ];
 
@@ -388,7 +429,7 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
         },
         help_glyph: "↑↓ jk",
         bar: true,
-        action: |s| input::move_cursor(s, true),
+        action: |state, _| input::move_cursor(state, true),
     },
     Keybind {
         key: KeySpec::Down,
@@ -401,7 +442,7 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
         },
         help_glyph: "",
         bar: false,
-        action: |s| input::move_cursor(s, false),
+        action: |state, _| input::move_cursor(state, false),
     },
     Keybind {
         key: KeySpec::Chars("k"),
@@ -414,7 +455,7 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
         },
         help_glyph: "",
         bar: false,
-        action: |s| input::move_cursor(s, true),
+        action: |state, _| input::move_cursor(state, true),
     },
     Keybind {
         key: KeySpec::Chars("j"),
@@ -427,7 +468,7 @@ static NAVIGATION_KEYS: [Keybind; 4] = [
         },
         help_glyph: "",
         bar: false,
-        action: |s| input::move_cursor(s, false),
+        action: |state, _| input::move_cursor(state, false),
     },
 ];
 
@@ -446,7 +487,7 @@ static FILTER_KEYS: [Keybind; 5] = [
         },
         help_glyph: "",
         bar: true,
-        action: |_| Action::None,
+        action: |_, _| Action::None,
     },
     Keybind {
         key: KeySpec::Tab,
@@ -459,7 +500,7 @@ static FILTER_KEYS: [Keybind; 5] = [
         },
         help_glyph: "",
         bar: true,
-        action: |_| Action::None,
+        action: |_, _| Action::None,
     },
     Keybind {
         key: KeySpec::Esc,
@@ -472,7 +513,7 @@ static FILTER_KEYS: [Keybind; 5] = [
         },
         help_glyph: "",
         bar: true,
-        action: |_| Action::None,
+        action: |_, _| Action::None,
     },
     Keybind {
         key: KeySpec::Backspace,
@@ -485,7 +526,7 @@ static FILTER_KEYS: [Keybind; 5] = [
         },
         help_glyph: "",
         bar: false,
-        action: |_| Action::None,
+        action: |_, _| Action::None,
     },
     Keybind {
         key: KeySpec::Chars("?"),
@@ -498,7 +539,7 @@ static FILTER_KEYS: [Keybind; 5] = [
         },
         help_glyph: "",
         bar: true,
-        action: |_| Action::None,
+        action: |_, _| Action::None,
     },
 ];
 
@@ -513,8 +554,8 @@ static HELP_KEYS: [Keybind; 1] = [Keybind {
     },
     help_glyph: "",
     bar: true,
-    action: |s| {
-        s.active_pane = Pane::Main;
+    action: |state, _| {
+        state.active_pane = Pane::Main;
         Action::Redraw
     },
 }];

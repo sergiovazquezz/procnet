@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{os::unix::net::UnixStream, time::Duration};
 
 use procnet_core::ipc::SnapshotData;
 use ratatui::{
@@ -43,7 +43,11 @@ impl Tui {
         self.state.paused
     }
 
-    pub fn handle_event(&mut self, timeout: Duration) -> Result<Action, TuiError> {
+    pub fn handle_event(
+        &mut self,
+        timeout: Duration,
+        stream: &mut UnixStream,
+    ) -> Result<Action, TuiError> {
         if !event::poll(timeout).map_err(TuiError::Event)? {
             return Ok(Action::None);
         }
@@ -56,7 +60,7 @@ impl Tui {
             return Ok(Action::None);
         }
 
-        Ok(input::handle_key(&mut self.state, key))
+        Ok(input::handle_key(&mut self.state, key, stream))
     }
 }
 

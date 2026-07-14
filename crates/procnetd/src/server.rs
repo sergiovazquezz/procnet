@@ -10,7 +10,10 @@ use std::{
     time::Duration,
 };
 
-use procnet_core::ipc::{self, DaemonCommand};
+use procnet_core::{
+    errors::MsgReadError,
+    ipc::{self, DaemonCommand},
+};
 
 use crate::{
     errors::{ListenerError, MutexPoison},
@@ -69,17 +72,22 @@ pub fn accept_loop(
 ) -> Result<!, ListenerError> {
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
+            Ok(mut stream) => {
                 let senders_clone = Arc::clone(&senders);
                 let daemon_state_clone = Arc::clone(&daemon_state);
 
                 thread::spawn(move || {
-                    if let Err(e) = stream.set_read_timeout(Some(Duration::from_secs(2))) {
+                    let Ok(stream_clone) = stream.try_clone() else {
+                        log::warn!("Failed to clone stream on incoming connection");
+                        return;
+                    };
+
+                    if let Err(e) = stream_clone.set_read_timeout(Some(Duration::from_secs(2))) {
                         log::warn!("Failed to set read timeout on incoming connection: {e}");
                         return;
                     }
 
-                    let mut reader = BufReader::new(stream);
+                    let mut reader = BufReader::new(stream_clone);
 
                     let msg = match ipc::read_msg(&mut reader) {
                         Ok(msg) => msg,
@@ -93,7 +101,7 @@ pub fn accept_loop(
 
                     if msg != DaemonCommand::Run {
                         // NOTE: If the Mutex is poisoned, `app::run()` will discover it on
-                        // its next lock attempt and exit, so we ignore the error here.
+                        // its next lock attempt and exit, so it's ignored here.
                         if let Ok(mut guard) = daemon_state_clone.lock() {
                             guard.update(msg);
                         }
@@ -101,7 +109,33 @@ pub fn accept_loop(
                         return;
                     }
 
-                    let mut stream = reader.into_inner();
+                    // Remove the read timeout used for CLI's
+                    let stream_clone = reader.into_inner();
+                    if let Err(e) = stream_clone.set_read_timeout(None) {
+                        log::warn!("Failed to set read timeout on incoming connection: {e}");
+                        return;
+                    }
+
+                    let mut reader = BufReader::new(stream_clone);
+
+                    thread::spawn(move || {
+                        loop {
+                            match ipc::read_msg(&mut reader) {
+                                Ok(msg) => {
+                                    if let Ok(mut guard) = daemon_state_clone.lock() {
+                                        guard.update(msg);
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                Err(MsgReadError::Eof) => break,
+                                Err(e) => {
+                                    log::warn!("Could not read message from TUI: {e}");
+                                    break;
+                                }
+                            }
+                        }
+                    });
 
                     if let Err(e) = stream.set_write_timeout(Some(Duration::from_millis(200))) {
                         log::warn!("Failed to set write timeout on incoming connection: {e}");

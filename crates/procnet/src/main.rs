@@ -22,6 +22,7 @@ fn main() -> Result<(), ClientError> {
     let args = Cli::parse();
 
     let mut stream = ipc::connect_to_socket()?;
+    let stream_clone = stream.try_clone()?;
 
     match args.command {
         Some(Command::Run) | None => cli::send_daemon_command(DaemonCommand::Run, &mut stream)?,
@@ -38,7 +39,7 @@ fn main() -> Result<(), ClientError> {
     let mut tui = Tui::new();
 
     let join_handle = thread::spawn(move || {
-        let mut reader = BufReader::new(stream);
+        let mut reader = BufReader::new(stream_clone);
 
         loop {
             match ipc::read_msg(&mut reader) {
@@ -70,7 +71,7 @@ fn main() -> Result<(), ClientError> {
 
         tui.draw(&snap)?;
 
-        match tui.handle_event(Duration::from_millis(250))? {
+        match tui.handle_event(Duration::from_millis(250), &mut stream)? {
             Action::Quit => break,
             Action::Redraw => tui.draw(&snap)?,
             Action::None => {}
