@@ -24,11 +24,11 @@ use crate::{
 pub fn run(stats_map: &MapMut, events_map: &MapMut) -> Result<(), DaemonError> {
     let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
 
-    let socket_path = ipc::socket_path();
+    let socket_path = ipc::daemon::socket_path();
 
     let listener = server::bind_unix_listener(&socket_path)?;
 
-    log::info!("Listening on {}", socket_path.display());
+    log::info!("Starting procnetd. Listening on {}", socket_path.display());
 
     signals::install_signal_handler(socket_path, shutdown_tx)?;
 

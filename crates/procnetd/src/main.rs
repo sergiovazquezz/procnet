@@ -30,11 +30,6 @@ mod stats_map;
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
-    log::info!(
-        "procnetd starting; socket path: {}",
-        procnet_core::ipc::socket_path().display()
-    );
-
     bump_memlock_rlimit();
 
     let skel_builder = ProcnetSkelBuilder::default();

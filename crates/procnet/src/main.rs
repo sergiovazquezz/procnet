@@ -21,7 +21,7 @@ mod tui;
 fn main() -> Result<(), ClientError> {
     let args = Cli::parse();
 
-    let mut stream = ipc::connect_to_socket()?;
+    let mut stream = ipc::client::connect_to_socket()?;
     let stream_clone = stream.try_clone()?;
 
     match args.command {

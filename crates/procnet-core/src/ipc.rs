@@ -1,24 +1,21 @@
-use std::{
-    io::{self, BufRead, Read},
-    os::unix::net::UnixStream,
-    path::PathBuf,
-};
+use std::io::{self, BufRead, Read};
 
 use clap::{Subcommand, value_parser};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
-    errors::{ConnectError, MsgReadError, MsgSendError},
+    errors::{MsgReadError, MsgSendError},
     stats::{ProcInfo, StatsRow},
 };
 
-#[must_use]
-pub fn socket_path() -> PathBuf {
-    match std::env::var_os("XDG_RUNTIME_DIR") {
-        Some(dir) if !dir.is_empty() => PathBuf::from(dir).join("procnetd.sock"),
-        _ => PathBuf::from("/tmp/procnetd.sock"),
-    }
-}
+pub mod client;
+pub mod daemon;
+
+/// Filename used for the IPC socket inside a runtime directory.
+const SOCKET_FILENAME: &str = "procnetd.sock";
+
+/// Socket used only by the system service.
+const SYSTEM_SOCKET_PATH: &str = "/run/procnetd.sock";
 
 /// Length of prefix used to frame each `bincode` message.
 const PREFIX_LEN: usize = 2;
@@ -53,12 +50,6 @@ pub struct SnapshotRef<'a> {
     pub tick: u64,
     pub rows: &'a [StatsRow],
     pub dead_procs: &'a [ProcInfo],
-}
-
-pub fn connect_to_socket() -> Result<UnixStream, ConnectError> {
-    let path = socket_path();
-    let stream = UnixStream::connect(&path).map_err(|e| ConnectError::new(path, e))?;
-    Ok(stream)
 }
 
 /// The resulting `buf` is `[len: u16 LE][payload: bincode]`.

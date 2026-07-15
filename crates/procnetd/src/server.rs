@@ -1,6 +1,10 @@
 use std::{
+    fs,
     io::{self, BufReader, Write},
-    os::unix::net::{UnixListener, UnixStream},
+    os::unix::{
+        fs::PermissionsExt,
+        net::{UnixListener, UnixStream},
+    },
     path::Path,
     sync::{
         Arc, Mutex,
@@ -25,14 +29,25 @@ type SenderList = Vec<SyncSender<Arc<[u8]>>>;
 /// Binds the IPC socket, removing a stale leftover file from a previously
 /// crashed daemon if no live daemon is currently listening.
 pub fn bind_unix_listener(path: &Path) -> Result<UnixListener, ListenerError> {
-    match UnixListener::bind(path) {
-        Ok(listener) => Ok(listener),
-        Err(e) if e.kind() == io::ErrorKind::AddrInUse => probe_and_bind(path),
-        Err(source) => Err(ListenerError::Bind {
-            path: path.to_path_buf(),
-            source,
-        }),
+    let listener = match UnixListener::bind(path) {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == io::ErrorKind::AddrInUse => probe_and_bind(path)?,
+        Err(source) => {
+            return Err(ListenerError::Bind {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+
+    if let Err(e) = fs::set_permissions(path, fs::Permissions::from_mode(0o666)) {
+        log::warn!(
+            "Failed to set permissions on socket {}: {e}",
+            path.display()
+        );
     }
+
+    Ok(listener)
 }
 
 /// Probes the path with a `connect` to decide whether the file is a stale
