@@ -16,6 +16,11 @@ pub struct StatsBytes {
 
 impl StatsBytes {
     #[must_use]
+    pub const fn new(sent: u64, recv: u64) -> Self {
+        Self { sent, recv }
+    }
+
+    #[must_use]
     pub const fn combine(&self) -> u64 {
         self.sent.saturating_add(self.recv)
     }
@@ -30,10 +35,50 @@ impl StatsBytes {
 }
 
 #[repr(C)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// The IP's are in Big Endian representation.
+pub struct StatsAddr {
+    pub dst_port: u16,
+    pub src_port: u16,
+    /// Big Endian.
+    pub dst_ipv4: u32,
+    /// Big Endian.
+    pub dst_ipv6: [u8; 16],
+}
+
+impl StatsAddr {
+    #[must_use]
+    /// Fields `dst_ipv4` and `dst_ipv6` are expected to be in Big Endian
+    /// representation.
+    pub const fn new(dst_port: u16, src_port: u16, dst_ipv4: u32, dst_ipv6: [u8; 16]) -> Self {
+        Self {
+            dst_port,
+            src_port,
+            dst_ipv4,
+            dst_ipv6,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProtocolStats {
+    pub bytes: StatsBytes,
+    pub addr: StatsAddr,
+}
+
+impl ProtocolStats {
+    #[must_use]
+    pub const fn new(bytes: StatsBytes, addr: StatsAddr) -> Self {
+        Self { bytes, addr }
+    }
+}
+
+#[repr(C)]
 #[derive(Clone, Debug, Default, PartialEq)]
 struct ProcStats {
-    pub tcp: StatsBytes,
-    pub udp: StatsBytes,
+    pub tcp: ProtocolStats,
+    pub udp: ProtocolStats,
 }
 
 /// Abstraction over a per-CPU BPF map lookup so the stats collector can be
@@ -69,8 +114,8 @@ impl ProcInfo {
 pub struct StatsRow {
     pub pid: u32,
     pub name: Box<str>,
-    pub tcp: StatsBytes,
-    pub udp: StatsBytes,
+    pub tcp: ProtocolStats,
+    pub udp: ProtocolStats,
     tcp_cum: StatsBytes,
     udp_cum: StatsBytes,
 }
@@ -81,8 +126,8 @@ impl StatsRow {
     pub fn new<T>(
         pid: u32,
         name: T,
-        tcp: StatsBytes,
-        udp: StatsBytes,
+        tcp: ProtocolStats,
+        udp: ProtocolStats,
         tcp_cum: StatsBytes,
         udp_cum: StatsBytes,
     ) -> Self
@@ -108,7 +153,7 @@ impl StatsRow {
     /// Per-tick total (TCP + UDP).
     #[must_use]
     pub fn total(&self) -> StatsBytes {
-        self.tcp.merge(self.udp)
+        self.tcp.bytes.merge(self.udp.bytes)
     }
 
     /// Cumulative total (TCP + UDP).
@@ -179,24 +224,30 @@ impl StatsCollector {
             let proc_info = &mut self.procs[idx];
 
             if let Some(new_stats) = merge_values_for_pid(stats_map, proc_info.pid) {
+                let tcp_bytes = &new_stats.tcp.bytes;
+                let udp_bytes = &new_stats.udp.bytes;
+
                 let tcp_delta = StatsBytes {
-                    sent: new_stats.tcp.sent.saturating_sub(proc_info.tcp_cum.sent),
-                    recv: new_stats.tcp.recv.saturating_sub(proc_info.tcp_cum.recv),
+                    sent: tcp_bytes.sent.saturating_sub(proc_info.tcp_cum.sent),
+                    recv: tcp_bytes.recv.saturating_sub(proc_info.tcp_cum.recv),
                 };
 
                 let udp_delta = StatsBytes {
-                    sent: new_stats.udp.sent.saturating_sub(proc_info.udp_cum.sent),
-                    recv: new_stats.udp.recv.saturating_sub(proc_info.udp_cum.recv),
+                    sent: udp_bytes.sent.saturating_sub(proc_info.udp_cum.sent),
+                    recv: udp_bytes.recv.saturating_sub(proc_info.udp_cum.recv),
                 };
 
-                proc_info.tcp_cum = new_stats.tcp;
-                proc_info.udp_cum = new_stats.udp;
+                proc_info.tcp_cum = *tcp_bytes;
+                proc_info.udp_cum = *udp_bytes;
+
+                let tcp = ProtocolStats::new(tcp_delta, new_stats.tcp.addr);
+                let udp = ProtocolStats::new(udp_delta, new_stats.udp.addr);
 
                 let row = StatsRow::new(
                     proc_info.pid,
                     proc_info.name.clone(),
-                    tcp_delta,
-                    udp_delta,
+                    tcp,
+                    udp,
                     proc_info.tcp_cum,
                     proc_info.udp_cum,
                 );
@@ -216,6 +267,16 @@ impl StatsCollector {
     }
 }
 
+#[inline]
+fn merge_stats(merged: &mut ProtocolStats, stats: ProtocolStats) {
+    merged.bytes.sent = merged.bytes.sent.saturating_add(stats.bytes.sent);
+    merged.bytes.recv = merged.bytes.recv.saturating_add(stats.bytes.recv);
+
+    if merged.addr == StatsAddr::default() && stats.addr != StatsAddr::default() {
+        merged.addr = stats.addr;
+    }
+}
+
 fn merge_values_for_pid(stats_map: &impl StatsMap, pid: u32) -> Option<ProcStats> {
     let key = pid.to_ne_bytes();
 
@@ -225,10 +286,8 @@ fn merge_values_for_pid(stats_map: &impl StatsMap, pid: u32) -> Option<ProcStats
 
     for value in per_cpu_values {
         if let Some(value) = proc_stats_from_bytes(&value) {
-            merged.tcp.sent = merged.tcp.sent.saturating_add(value.tcp.sent);
-            merged.tcp.recv = merged.tcp.recv.saturating_add(value.tcp.recv);
-            merged.udp.sent = merged.udp.sent.saturating_add(value.udp.sent);
-            merged.udp.recv = merged.udp.recv.saturating_add(value.udp.recv);
+            merge_stats(&mut merged.tcp, value.tcp);
+            merge_stats(&mut merged.udp, value.udp);
         }
     }
 
@@ -265,31 +324,36 @@ mod tests {
     }
 
     impl FakeStatsMap {
-        fn new(pid: u32, tcp: StatsBytes, udp: StatsBytes) -> Self {
+        fn new(pid: u32, tcp: ProtocolStats, udp: ProtocolStats) -> Self {
             let mut map = Self {
                 data: HashMap::new(),
             };
 
-            map.data
-                .insert(pid.to_ne_bytes().to_vec(), vec![proc_stats_bytes(tcp, udp)]);
+            map.data.insert(
+                pid.to_ne_bytes().to_vec(),
+                vec![proc_stats_to_bytes(tcp, udp)],
+            );
 
             map
         }
 
-        /// Creates two vectors for a given `pid`, the second having `10` for
-        /// sent and recv.
-        fn new_two_values(pid: u32, tcp: StatsBytes, udp: StatsBytes) -> Self {
+        /// Creates two vectors for a given `pid`. The second having `10` for
+        /// sent and recv, and an empty `addr`.
+        fn new_two_values(pid: u32, tcp: ProtocolStats, udp: ProtocolStats) -> Self {
             let mut map = Self {
                 data: HashMap::new(),
             };
 
-            let second_bytes = StatsBytes { sent: 10, recv: 10 };
+            let second_stats = ProtocolStats {
+                bytes: StatsBytes { sent: 10, recv: 10 },
+                addr: StatsAddr::default(),
+            };
 
             map.data.insert(
                 pid.to_ne_bytes().to_vec(),
                 vec![
-                    proc_stats_bytes(tcp, udp),
-                    proc_stats_bytes(second_bytes, second_bytes),
+                    proc_stats_to_bytes(tcp, udp),
+                    proc_stats_to_bytes(second_stats.clone(), second_stats),
                 ],
             );
 
@@ -301,15 +365,42 @@ mod tests {
         }
     }
 
-    fn proc_stats_bytes(tcp: StatsBytes, udp: StatsBytes) -> Vec<u8> {
+    fn proc_stats_to_bytes(tcp: ProtocolStats, udp: ProtocolStats) -> Vec<u8> {
         let mut v: Vec<u8> = Vec::with_capacity(size_of::<ProcStats>());
 
-        v.extend_from_slice(&tcp.sent.to_ne_bytes());
-        v.extend_from_slice(&tcp.recv.to_ne_bytes());
-        v.extend_from_slice(&udp.sent.to_ne_bytes());
-        v.extend_from_slice(&udp.recv.to_ne_bytes());
+        v.extend_from_slice(&tcp.bytes.sent.to_ne_bytes());
+        v.extend_from_slice(&tcp.bytes.recv.to_ne_bytes());
+        v.extend_from_slice(&tcp.addr.dst_port.to_ne_bytes());
+        v.extend_from_slice(&tcp.addr.src_port.to_ne_bytes());
+        v.extend_from_slice(&tcp.addr.dst_ipv4.to_ne_bytes());
+        v.extend_from_slice(&tcp.addr.dst_ipv6);
+
+        v.extend_from_slice(&udp.bytes.sent.to_ne_bytes());
+        v.extend_from_slice(&udp.bytes.recv.to_ne_bytes());
+        v.extend_from_slice(&udp.addr.dst_port.to_ne_bytes());
+        v.extend_from_slice(&udp.addr.src_port.to_ne_bytes());
+        v.extend_from_slice(&udp.addr.dst_ipv4.to_ne_bytes());
+        v.extend_from_slice(&udp.addr.dst_ipv6);
+
+        assert_eq!(v.len(), size_of::<ProcStats>());
 
         v
+    }
+
+    fn test_addr() -> StatsAddr {
+        let ipv4 = u32::from_be_bytes([192, 168, 1, 10]).to_be();
+
+        let ipv6: [u8; 16] = [
+            0x20, 0x01, 0x0d, 0xb8, 0x85, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x8a, 0x2e, 0x03, 0x70,
+            0x73, 0x34,
+        ];
+
+        StatsAddr {
+            dst_port: 443,
+            src_port: 120,
+            dst_ipv4: ipv4,
+            dst_ipv6: ipv6,
+        }
     }
 
     #[test]
@@ -332,17 +423,25 @@ mod tests {
 
     #[test]
     fn stats_row_new_saturates_on_overflow() {
-        let row = StatsRow::new(
-            130,
-            "firefox",
+        let tcp = ProtocolStats::new(
             StatsBytes {
                 sent: u64::MAX,
                 recv: 10,
             },
-            StatsBytes { sent: 20, recv: 10 },
+            StatsAddr::default(),
+        );
+
+        let udp = ProtocolStats::new(StatsBytes { sent: 20, recv: 10 }, StatsAddr::default());
+
+        let row = StatsRow::new(
+            130,
+            "firefox",
+            tcp,
+            udp,
             StatsBytes::default(),
             StatsBytes::default(),
         );
+
         assert_eq!(row.total().sent, u64::MAX);
         assert_eq!(row.total().recv, 10 + 10);
     }
@@ -370,39 +469,52 @@ mod tests {
             name: "vim".into(),
         });
 
-        let tcp1 = StatsBytes {
-            sent: 100,
-            recv: 200,
+        let tcp1 = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 100,
+                recv: 200,
+            },
+            addr: test_addr(),
         };
-        let udp1 = StatsBytes {
-            sent: 400,
-            recv: 1000,
+        let udp1 = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 400,
+                recv: 1000,
+            },
+            addr: test_addr(),
         };
 
-        let map = FakeStatsMap::new(7, tcp1, udp1);
+        let map = FakeStatsMap::new(7, tcp1.clone(), udp1.clone());
         let mut rows = Vec::new();
         stats.collect_rows(&map, &mut rows);
 
         // After the first tick the cumulative counters equal the merged values.
-        assert_eq!(rows[0].tcp_cum, tcp1);
-        assert_eq!(rows[0].udp_cum, udp1);
-        assert_eq!(rows[0].total_cum(), tcp1.merge(udp1));
+        assert_eq!(rows[0].tcp_cum, tcp1.bytes);
+        assert_eq!(rows[0].udp_cum, udp1.bytes);
+        assert_eq!(rows[0].total_cum(), tcp1.bytes.merge(udp1.bytes));
 
         // Second tick: cumulative tracks the latest counters, delta is the diff.
-        let tcp2 = StatsBytes {
-            sent: 150,
-            recv: 250,
+        let tcp2 = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 150,
+                recv: 250,
+            },
+            addr: test_addr(),
         };
-        let udp2 = StatsBytes {
-            sent: 500,
-            recv: 1200,
+        let udp2 = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 500,
+                recv: 1200,
+            },
+            addr: test_addr(),
         };
-        let map2 = FakeStatsMap::new(7, tcp2, udp2);
+
+        let map2 = FakeStatsMap::new(7, tcp2.clone(), udp2.clone());
         stats.collect_rows(&map2, &mut rows);
 
-        assert_eq!(rows[0].tcp_cum, tcp2);
-        assert_eq!(rows[0].udp_cum, udp2);
-        assert_eq!(rows[0].total_cum(), tcp2.merge(udp2));
+        assert_eq!(rows[0].tcp_cum, tcp2.bytes);
+        assert_eq!(rows[0].udp_cum, udp2.bytes);
+        assert_eq!(rows[0].total_cum(), tcp2.bytes.merge(udp2.bytes));
     }
 
     #[test]
@@ -415,8 +527,8 @@ mod tests {
 
         assert_eq!(stats.procs[0].name.as_ref(), "google");
 
-        let bytes = StatsBytes::default();
-        let map = FakeStatsMap::new(10, bytes, bytes);
+        let prot_stats = ProtocolStats::default();
+        let map = FakeStatsMap::new(10, prot_stats.clone(), prot_stats);
 
         let mut rows: Vec<StatsRow> = Vec::new();
 
@@ -458,7 +570,7 @@ mod tests {
 
         assert_eq!(stats.procs.len(), 1);
 
-        let mut map = FakeStatsMap::new(140, StatsBytes::default(), StatsBytes::default());
+        let mut map = FakeStatsMap::new(140, ProtocolStats::default(), ProtocolStats::default());
         let mut rows = Vec::<StatsRow>::with_capacity(1);
 
         stats.collect_rows(&map, &mut rows);
@@ -469,8 +581,8 @@ mod tests {
             StatsRow::new(
                 140,
                 "librewolf",
-                StatsBytes::default(),
-                StatsBytes::default(),
+                ProtocolStats::default(),
+                ProtocolStats::default(),
                 StatsBytes::default(),
                 StatsBytes::default(),
             )
@@ -503,9 +615,9 @@ mod tests {
             });
             map.data.insert(
                 pid.to_ne_bytes().to_vec(),
-                vec![proc_stats_bytes(
-                    StatsBytes::default(),
-                    StatsBytes::default(),
+                vec![proc_stats_to_bytes(
+                    ProtocolStats::default(),
+                    ProtocolStats::default(),
                 )],
             );
         }
@@ -568,95 +680,156 @@ mod tests {
             name: "vim".into(),
         });
 
-        let tcp_bytes = StatsBytes {
-            sent: 100,
-            recv: 200,
+        let tcp = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 100,
+                recv: 200,
+            },
+            addr: test_addr(),
         };
-        let udp_bytes = StatsBytes {
-            sent: 400,
-            recv: 1000,
+        let udp = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 400,
+                recv: 1000,
+            },
+            addr: test_addr(),
         };
 
-        let map = FakeStatsMap::new(7, tcp_bytes, udp_bytes);
+        let map = FakeStatsMap::new(7, tcp.clone(), udp.clone());
         let mut rows: Vec<StatsRow> = Vec::new();
 
         stats.collect_rows(&map, &mut rows);
-        assert_eq!(rows[0].tcp, tcp_bytes);
-        assert_eq!(rows[0].udp, udp_bytes);
+        assert_eq!(rows[0].tcp, tcp);
+        assert_eq!(rows[0].udp, udp);
 
-        let tcp_bytes2 = StatsBytes {
-            sent: tcp_bytes.sent + 20,
-            recv: tcp_bytes.recv + 10,
+        let tcp2 = ProtocolStats {
+            bytes: StatsBytes {
+                sent: tcp.bytes.sent + 20,
+                recv: tcp.bytes.recv + 10,
+            },
+            addr: test_addr(),
         };
-        let udp_bytes2 = StatsBytes {
-            sent: udp_bytes.sent + 20,
-            recv: udp_bytes.recv + 10,
+        let udp2 = ProtocolStats {
+            bytes: StatsBytes {
+                sent: udp.bytes.sent + 20,
+                recv: udp.bytes.recv + 10,
+            },
+            addr: test_addr(),
         };
 
-        let map = FakeStatsMap::new(7, tcp_bytes2, udp_bytes2);
+        let map = FakeStatsMap::new(7, tcp2.clone(), udp2.clone());
 
         let tcp_delta = StatsBytes {
-            sent: tcp_bytes2.sent.saturating_sub(tcp_bytes.sent),
-            recv: tcp_bytes2.recv.saturating_sub(tcp_bytes.recv),
+            sent: tcp2.bytes.sent.saturating_sub(tcp.bytes.sent),
+            recv: tcp2.bytes.recv.saturating_sub(tcp.bytes.recv),
         };
         let udp_delta = StatsBytes {
-            sent: udp_bytes2.sent.saturating_sub(udp_bytes.sent),
-            recv: udp_bytes2.recv.saturating_sub(udp_bytes.recv),
+            sent: udp2.bytes.sent.saturating_sub(udp.bytes.sent),
+            recv: udp2.bytes.recv.saturating_sub(udp.bytes.recv),
         };
 
         stats.collect_rows(&map, &mut rows);
-        assert_eq!(rows[0].tcp, tcp_delta);
-        assert_eq!(rows[0].udp, udp_delta);
+        assert_eq!(rows[0].tcp.bytes, tcp_delta);
+        assert_eq!(rows[0].udp.bytes, udp_delta);
     }
 
     #[test]
     fn merge_values_for_pid_success() {
-        let tcp_bytes = StatsBytes {
-            sent: 50,
-            recv: 110,
+        let tcp = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 50,
+                recv: 110,
+            },
+            addr: test_addr(),
         };
-        let udp_bytes = StatsBytes {
-            sent: 10,
-            recv: 500,
+        let udp = ProtocolStats {
+            bytes: StatsBytes {
+                sent: 10,
+                recv: 500,
+            },
+            addr: StatsAddr::default(),
         };
 
-        let map = FakeStatsMap::new_two_values(3, tcp_bytes, udp_bytes);
+        let map = FakeStatsMap::new_two_values(3, tcp.clone(), udp.clone());
 
         let merged = merge_values_for_pid(&map, 3).unwrap();
 
         assert_eq!(
             merged,
             ProcStats {
-                tcp: StatsBytes {
-                    sent: tcp_bytes.sent + 10,
-                    recv: tcp_bytes.recv + 10
+                tcp: ProtocolStats {
+                    bytes: StatsBytes {
+                        sent: tcp.bytes.sent + 10,
+                        recv: tcp.bytes.recv + 10
+                    },
+                    addr: test_addr()
                 },
-                udp: StatsBytes {
-                    sent: udp_bytes.sent + 10,
-                    recv: udp_bytes.recv + 10
+                udp: ProtocolStats {
+                    bytes: StatsBytes {
+                        sent: udp.bytes.sent + 10,
+                        recv: udp.bytes.recv + 10
+                    },
+                    addr: StatsAddr::default()
                 },
             }
         );
     }
 
     #[test]
+    fn merge_values_for_pid_keeps_endpoint_snapshots_atomic() {
+        let ipv4_addr = StatsAddr::new(
+            443,
+            49152,
+            u32::from_be_bytes([192, 0, 2, 1]).to_be(),
+            [0; 16],
+        );
+        let ipv6_addr = StatsAddr::new(
+            53,
+            49153,
+            0,
+            [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        );
+
+        let first_tcp = ProtocolStats::new(StatsBytes::new(50, 110), ipv4_addr.clone());
+        let first_udp = ProtocolStats::new(StatsBytes::new(10, 500), ipv6_addr.clone());
+        let second_tcp = ProtocolStats::new(StatsBytes::new(20, 30), ipv6_addr);
+        let second_udp = ProtocolStats::new(StatsBytes::new(40, 60), ipv4_addr);
+
+        let mut map = FakeStatsMap {
+            data: HashMap::new(),
+        };
+        map.data.insert(
+            3_u32.to_ne_bytes().to_vec(),
+            vec![
+                proc_stats_to_bytes(first_tcp.clone(), first_udp.clone()),
+                proc_stats_to_bytes(second_tcp, second_udp),
+            ],
+        );
+
+        let merged = merge_values_for_pid(&map, 3).unwrap();
+
+        assert_eq!(merged.tcp.bytes, StatsBytes::new(70, 140));
+        assert_eq!(merged.udp.bytes, StatsBytes::new(50, 560));
+        assert_eq!(merged.tcp.addr, first_tcp.addr);
+        assert_eq!(merged.udp.addr, first_udp.addr);
+    }
+
+    #[test]
     fn proc_stats_from_bytes_valid_length() {
-        let mut raw: Vec<u8> = Vec::with_capacity(size_of::<ProcStats>());
-        let bytes = StatsBytes { sent: 10, recv: 20 };
+        let protocol_stats = ProtocolStats {
+            bytes: StatsBytes { sent: 10, recv: 20 },
+            addr: StatsAddr::default(),
+        };
 
-        // TCP and UDP
-        raw.extend_from_slice(&bytes.sent.to_ne_bytes());
-        raw.extend_from_slice(&bytes.recv.to_ne_bytes());
-        raw.extend_from_slice(&bytes.sent.to_ne_bytes());
-        raw.extend_from_slice(&bytes.recv.to_ne_bytes());
+        let bytes = proc_stats_to_bytes(protocol_stats.clone(), protocol_stats.clone());
 
-        let result = proc_stats_from_bytes(&raw).unwrap();
+        let result = proc_stats_from_bytes(&bytes).unwrap();
 
         assert_eq!(
             result,
             ProcStats {
-                tcp: bytes,
-                udp: bytes
+                tcp: protocol_stats.clone(),
+                udp: protocol_stats,
             }
         );
 

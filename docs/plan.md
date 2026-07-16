@@ -14,13 +14,6 @@
 
 ## Features
 
-- Add a dead process section, with the possibility to remove any.
-    - If a process with the same name exists merge the usage (optional).
-
-- Show the IPs/ports a process has used.
-
-- Add an option to change from cumulative stats to per tick stats.
-
 - Instead of crashing the client when the daemon is not active or not working
   correctly, show a status message and reconnect when possible.
 
@@ -31,6 +24,10 @@
 ## Possible features
 
 - A row with total network usage by active processes (maybe also dead).
+
+- For dead processes:
+    - If a process with the same name exists merge the usage.
+    - Remove any process from the list.
 
 - Add Unix sockets via `unix_stream_sendmsg` and `unix_stream_recvmsg`.
 

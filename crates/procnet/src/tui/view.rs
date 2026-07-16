@@ -1,3 +1,5 @@
+use std::net::{Ipv4Addr, Ipv6Addr};
+
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -8,7 +10,7 @@ use ratatui::{
 
 use procnet_core::{
     ipc::SnapshotData,
-    stats::{ProcInfo, StatsBytes, StatsRow},
+    stats::{ProcInfo, ProtocolStats, StatsAddr, StatsBytes, StatsRow},
 };
 
 use crate::tui::{
@@ -538,10 +540,10 @@ fn render_detail(frame: &mut Frame, area: Rect, snap: &SnapshotData, state: &Tui
                     Span::raw("  "),
                     Span::raw(row.name.as_ref()),
                 ]),
-                proto_line("TCP  ", row.tcp, tcp_cum, unit),
-                proto_line("UDP  ", row.udp, udp_cum, unit),
+                proto_line("TCP  ", &row.tcp, tcp_cum, unit),
+                proto_line("UDP  ", &row.udp, udp_cum, unit),
                 Line::raw(""),
-                proto_line("TOT  ", total, total_cum, unit),
+                traffic_line("TOT  ", total, total_cum, unit),
             ]
         }
         ViewMode::Dead => {
@@ -598,8 +600,25 @@ fn cum_only_line(label: &str, cum: StatsBytes, unit: Unit) -> Line<'static> {
     ])
 }
 
-fn proto_line(label: &str, tick: StatsBytes, cum: StatsBytes, unit: Unit) -> Line<'static> {
-    Line::from(vec![
+fn proto_line(label: &str, stats: &ProtocolStats, cum: StatsBytes, unit: Unit) -> Line<'static> {
+    let tick = stats.bytes;
+    let mut spans = traffic_spans(label, tick, cum, unit);
+
+    spans.extend([
+        Span::raw("   "),
+        theme::muted_span("endpoint: "),
+        Span::raw(format_endpoint(&stats.addr)),
+    ]);
+
+    Line::from(spans)
+}
+
+fn traffic_line(label: &str, tick: StatsBytes, cum: StatsBytes, unit: Unit) -> Line<'static> {
+    Line::from(traffic_spans(label, tick, cum, unit))
+}
+
+fn traffic_spans(label: &str, tick: StatsBytes, cum: StatsBytes, unit: Unit) -> Vec<Span<'static>> {
+    vec![
         Span::styled(
             format!("{label:<5}"),
             Style::new()
@@ -625,7 +644,26 @@ fn proto_line(label: &str, tick: StatsBytes, cum: StatsBytes, unit: Unit) -> Lin
             ),
             Style::new().fg(theme::color::RECV),
         ),
-    ])
+    ]
+}
+
+fn format_endpoint(addr: &StatsAddr) -> String {
+    if addr.src_port == 0 || addr.dst_port == 0 {
+        return "—".to_owned();
+    }
+
+    let destination = if addr.dst_ipv4 != 0 {
+        Ipv4Addr::from(u32::from_be(addr.dst_ipv4)).to_string()
+    } else if addr.dst_ipv6 != [0; 16] {
+        format!("[{}]", Ipv6Addr::from(addr.dst_ipv6))
+    } else {
+        return "—".to_owned();
+    };
+
+    format!(
+        "src {} → dst {}:{}",
+        addr.src_port, destination, addr.dst_port
+    )
 }
 
 fn detail_block(title: &str) -> Block<'static> {
@@ -969,17 +1007,56 @@ mod tests {
         StatsRow::new(
             pid,
             name,
-            StatsBytes {
-                sent: tcp.0,
-                recv: tcp.1,
-            },
-            StatsBytes {
-                sent: udp.0,
-                recv: udp.1,
-            },
+            ProtocolStats::new(
+                StatsBytes {
+                    sent: tcp.0,
+                    recv: tcp.1,
+                },
+                StatsAddr::default(),
+            ),
+            ProtocolStats::new(
+                StatsBytes {
+                    sent: udp.0,
+                    recv: udp.1,
+                },
+                StatsAddr::default(),
+            ),
             StatsBytes::default(),
             StatsBytes::default(),
         )
+    }
+
+    #[test]
+    fn format_endpoint_renders_ipv4() {
+        let addr = StatsAddr::new(
+            443,
+            49152,
+            u32::from_be_bytes([192, 0, 2, 1]).to_be(),
+            [0; 16],
+        );
+
+        assert_eq!(format_endpoint(&addr), "src 49152 → dst 192.0.2.1:443");
+    }
+
+    #[test]
+    fn format_endpoint_renders_bracketed_ipv6() {
+        let addr = StatsAddr::new(
+            53,
+            12345,
+            0,
+            [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        );
+
+        assert_eq!(format_endpoint(&addr), "src 12345 → dst [2001:db8::1]:53");
+    }
+
+    #[test]
+    fn format_endpoint_hides_incomplete_addresses() {
+        assert_eq!(format_endpoint(&StatsAddr::default()), "—");
+        assert_eq!(
+            format_endpoint(&StatsAddr::new(443, 0, u32::from_be(1), [0; 16])),
+            "—"
+        );
     }
 
     fn pids(rows: &[StatsRow], idx: &[usize]) -> Vec<u32> {

@@ -100,22 +100,19 @@ mod tests {
         io::{BufReader, Cursor},
     };
 
-    use crate::stats::StatsBytes;
+    use crate::stats::{ProtocolStats, StatsAddr, StatsBytes};
 
     use super::*;
 
     fn sample_rows() -> Vec<StatsRow> {
+        let tcp_bytes = StatsBytes::new(512, 1024);
+        let udp_bytes = StatsBytes::new(2048, 4096);
+
         vec![StatsRow::new(
             130,
             "firefox",
-            StatsBytes {
-                sent: 512,
-                recv: 1024,
-            },
-            StatsBytes {
-                sent: 2048,
-                recv: 4096,
-            },
+            ProtocolStats::new(tcp_bytes, StatsAddr::default()),
+            ProtocolStats::new(udp_bytes, StatsAddr::default()),
             StatsBytes::default(),
             StatsBytes::default(),
         )]

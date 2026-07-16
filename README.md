@@ -59,7 +59,7 @@ nix develop
 - Arch Linux:
 
 ```sh
-sudo pacman -S --needed base-devel rustup clang llvm elfutils libbpf bpf pkgconf zlib
+sudo pacman -S base-devel rustup clang llvm elfutils libbpf bpf pkgconf zlib
 ```
 
 ### Build
