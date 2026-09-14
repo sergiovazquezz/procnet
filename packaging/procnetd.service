@@ -5,9 +5,20 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/procnetd
+ExecStart=procnetd
+DynamicUser=yes
+RuntimeDirectory=procnet
+RuntimeDirectoryMode=0755
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target

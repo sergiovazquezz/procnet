@@ -1,5 +1,5 @@
-.PHONY: lint test clear-logs build-release run-release run-daemon run-client \
-	build-profile run-profile run-daemon-profile run-client-profile \
+.PHONY: lint test clear-logs build-release run-daemon run-client \
+	build-profile run-daemon-profile run-client-profile \
 	stats record flamegraph heaptrack clean install-caps \
 	install uninstall regen-vmlinux
 
@@ -9,6 +9,7 @@ DAEMON_RELEASE  := ./target/release/procnetd
 CLIENT_RELEASE  := ./target/release/procnet
 DAEMON_PROFILE  := ./target/profiling/procnetd
 CLIENT_PROFILE  := ./target/profiling/procnet
+DEV_SOCKET      := $${XDG_RUNTIME_DIR:-/tmp}/procnetd.sock
 
 
 lint:
@@ -24,10 +25,10 @@ build-release:
 	cargo build --release
 
 run-daemon: build-release install-caps clear-logs
-	$(DAEMON_RELEASE)
+	PROCNET_SOCKET="$(DEV_SOCKET)" $(DAEMON_RELEASE)
 
 run-client: build-release
-	$(CLIENT_RELEASE)
+	PROCNET_SOCKET="$(DEV_SOCKET)" $(CLIENT_RELEASE)
 
 
 # Profiling
@@ -35,22 +36,22 @@ build-profile:
 	cargo build --profile profiling
 
 run-daemon-profile: build-profile clear-logs
-	sudo $(DAEMON_PROFILE)
+	sudo env PROCNET_SOCKET="$(DEV_SOCKET)" $(DAEMON_PROFILE)
 
 run-client-profile: build-profile
-	sudo $(CLIENT_PROFILE)
+	PROCNET_SOCKET="$(DEV_SOCKET)" $(CLIENT_PROFILE)
 
 stats: build-profile clear-logs
-	sudo perf stat -d $(DAEMON_PROFILE)
+	sudo env PROCNET_SOCKET="$(DEV_SOCKET)" perf stat -d $(DAEMON_PROFILE)
 
 record: build-profile clear-logs
-	sudo perf record -g $(DAEMON_PROFILE)
+	sudo env PROCNET_SOCKET="$(DEV_SOCKET)" perf record -g $(DAEMON_PROFILE)
 
 flamegraph: build-profile clear-logs
-	sudo flamegraph -- $(DAEMON_PROFILE)
+	sudo env PROCNET_SOCKET="$(DEV_SOCKET)" flamegraph -- $(DAEMON_PROFILE)
 
 heaptrack: build-profile clear-logs
-	sudo heaptrack $(DAEMON_PROFILE)
+	sudo env PROCNET_SOCKET="$(DEV_SOCKET)" heaptrack $(DAEMON_PROFILE)
 
 
 # Caps

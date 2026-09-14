@@ -116,21 +116,33 @@
           config = lib.mkIf cfg.enable {
             environment.systemPackages = [ pkg ];
 
-            security.wrappers.procnetd = {
-              source = "${pkg}/bin/procnetd";
-              owner = "root";
-              group = "root";
-              capabilities = "cap_bpf,cap_perfmon,cap_sys_resource+ep";
-            };
-
-            systemd.user.services.procnetd = {
+            systemd.services.procnetd = {
               description = "Procnet eBPF network-usage daemon";
               documentation = [ "https://github.com/sergiovazquezz/procnet" ];
               after = [ "network.target" ];
-              wantedBy = [ "default.target" ];
+              wantedBy = [ "multi-user.target" ];
               serviceConfig = {
                 Type = "simple";
-                ExecStart = "${config.security.wrapperDir}/procnetd";
+                ExecStart = "${pkg}/bin/procnetd";
+                DynamicUser = true;
+                RuntimeDirectory = "procnet";
+                RuntimeDirectoryMode = "0755";
+                AmbientCapabilities = [
+                  "CAP_BPF"
+                  "CAP_PERFMON"
+                  "CAP_SYS_RESOURCE"
+                ];
+                CapabilityBoundingSet = [
+                  "CAP_BPF"
+                  "CAP_PERFMON"
+                  "CAP_SYS_RESOURCE"
+                ];
+                NoNewPrivileges = true;
+                ProtectSystem = "strict";
+                ProtectHome = true;
+                PrivateTmp = true;
+                RestrictSUIDSGID = true;
+                LockPersonality = true;
                 StandardOutput = "journal";
                 StandardError = "journal";
               };

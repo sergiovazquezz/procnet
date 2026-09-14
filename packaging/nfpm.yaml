@@ -18,10 +18,15 @@ contents:
     dst: /usr/bin/procnet
     file_info:
       mode: 0755
-  - src: packaging/procnetd-system.service
+  - src: packaging/procnetd.service
     dst: /usr/lib/systemd/system/procnetd.service
     file_info:
       mode: 0644
+
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+  postremove: packaging/scripts/postremove.sh
 
 overrides:
   deb:
