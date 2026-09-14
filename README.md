@@ -2,9 +2,7 @@
 
 A TUI for attributing network usage to processes via eBPF.
 
-The package consists of a Daemon (procnetd) + CLI/TUI (procnet). The Daemon is
-recommended to be ran as a user service (as done in the NixOS module and when
-using `make install`).
+The package consists of a Daemon (procnetd) + CLI/TUI (procnet).
 
 Once the daemon is running a TUI can be attached via the `procnet` binary. There
 is no limitation in terms of the number of clients that can be attached to the
@@ -43,6 +41,8 @@ Add `procnet` to your flake inputs and import the module:
 }
 ```
 
+This installs both binaries and enables the system-level `procnetd.service`.
+
 ## Building From Source
 
 ### Dependencies
@@ -72,23 +72,29 @@ procnet
 make uninstall
 ```
 
+`make install` installs both binaries under `/usr/local/bin`, installs and
+starts the system-level `procnetd.service`, and therefore prompts for `sudo`.
+
+The daemon listens on `/run/procnet/procnetd.sock`.
+
 ## Development
 
 Enter the development environment and run the daemon and the TUI client in
-separate terminals. The daemon only needs a one-time capability grant, not a
-running root shell.
+separate terminals. The daemon only needs a one-time capability grant.
 
 ```sh
 nix develop         # Or install dependencies for your system
 
 make install-caps   # one-time sudo; grants cap_bpf,cap_perfmon,cap_sys_resource
-make run-daemon     # run as your normal user
-make run-client     # run as your normal user
+make run-daemon
+make run-client
 ```
 
-Profiling targets (`stats`, `record`, `flamegraph`, `heaptrack`, `run-profile`,
-`run-daemon-profile`) still require `sudo` because they launch profiling build
-with no caps.
+The development targets set `PROCNET_SOCKET` keeping development instances
+separate from the installed system service.
+
+Targets that launch the profiling daemon still require `sudo` because that
+binary has no installed capabilities.
 
 The profiling binaries themselves (`perf`, `flamegraph`, `heaptrack`) are not
 provided by the dev shell and must be installed on the host.

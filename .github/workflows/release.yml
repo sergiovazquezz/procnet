@@ -71,7 +71,7 @@ jobs:
           mkdir -p "$staging"
           install -m 0755 target/release/procnetd "$staging/procnetd"
           install -m 0755 target/release/procnet  "$staging/procnet"
-          install -m 0644 packaging/procnetd-system.service "$staging/procnetd.service"
+          install -m 0644 packaging/procnetd.service "$staging/procnetd.service"
           install -m 0644 README.md    "$staging/README.md"
           install -m 0644 LICENSE-GPL2 "$staging/LICENSE-GPL2"
           mkdir -p dist

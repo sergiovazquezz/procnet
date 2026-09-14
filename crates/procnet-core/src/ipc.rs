@@ -1,24 +1,41 @@
-use std::io::{self, BufRead, Read};
+use std::{
+    env, ffi,
+    io::{self, BufRead, Read},
+    os::unix::net::UnixStream,
+    path::PathBuf,
+};
 
 use clap::{Subcommand, value_parser};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
-    errors::{MsgReadError, MsgSendError},
+    errors::{ConnectError, MsgReadError, MsgSendError},
     stats::{ProcInfo, StatsRow},
 };
 
-pub mod client;
-pub mod daemon;
+/// Environment variable used to override the socket for development and tests.
+const SOCKET_ENV_VAR: &str = "PROCNET_SOCKET";
 
-/// Filename used for the IPC socket inside a runtime directory.
-const SOCKET_FILENAME: &str = "procnetd.sock";
-
-/// Socket used only by the system service.
-const SYSTEM_SOCKET_PATH: &str = "/run/procnetd.sock";
+/// Socket used by the installed system service.
+const SYSTEM_SOCKET_PATH: &str = "/run/procnet/procnetd.sock";
 
 /// Length of prefix used to frame each `bincode` message.
 const PREFIX_LEN: usize = 2;
+
+fn resolve_socket_path(configured_path: Option<&ffi::OsStr>) -> PathBuf {
+    configured_path
+        .filter(|path| !path.is_empty())
+        .map_or_else(|| PathBuf::from(SYSTEM_SOCKET_PATH), PathBuf::from)
+}
+
+#[must_use]
+pub fn socket_path() -> PathBuf {
+    resolve_socket_path(env::var_os(SOCKET_ENV_VAR).as_deref())
+}
+
+pub fn connect_to_socket() -> Result<UnixStream, ConnectError> {
+    UnixStream::connect(socket_path()).map_err(ConnectError)
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Subcommand, Serialize, Deserialize)]
 pub enum DaemonCommand {
@@ -97,12 +114,37 @@ fn read_exact_or_eof<R: Read>(reader: &mut R, dest: &mut [u8]) -> Result<(), Msg
 mod tests {
     use std::{
         assert_matches,
+        ffi::OsStr,
         io::{BufReader, Cursor},
     };
 
     use crate::stats::{ProtocolStats, StatsAddr, StatsBytes};
 
     use super::*;
+
+    #[test]
+    fn socket_path_defaults_to_system_runtime_directory() {
+        assert_eq!(
+            resolve_socket_path(None),
+            PathBuf::from("/run/procnet/procnetd.sock")
+        );
+    }
+
+    #[test]
+    fn socket_path_uses_configured_override() {
+        assert_eq!(
+            resolve_socket_path(Some(OsStr::new("/tmp/procnet-test.sock"))),
+            PathBuf::from("/tmp/procnet-test.sock")
+        );
+    }
+
+    #[test]
+    fn socket_path_ignores_empty_override() {
+        assert_eq!(
+            resolve_socket_path(Some(OsStr::new(""))),
+            PathBuf::from("/run/procnet/procnetd.sock")
+        );
+    }
 
     fn sample_rows() -> Vec<StatsRow> {
         let tcp_bytes = StatsBytes::new(512, 1024);
