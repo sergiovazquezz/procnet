@@ -23,6 +23,11 @@ contents:
     file_info:
       mode: 0644
 
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+  postremove: packaging/scripts/postremove.sh
+
 overrides:
   deb:
     depends:
