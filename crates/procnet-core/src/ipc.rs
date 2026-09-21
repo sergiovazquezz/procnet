@@ -20,7 +20,7 @@ const SOCKET_ENV_VAR: &str = "PROCNET_SOCKET";
 const SYSTEM_SOCKET_PATH: &str = "/run/procnet/procnetd.sock";
 
 /// Length of prefix used to frame each `bincode` message.
-const PREFIX_LEN: usize = 2;
+pub const PREFIX_LEN: usize = size_of::<u16>();
 
 fn resolve_socket_path(configured_path: Option<&ffi::OsStr>) -> PathBuf {
     configured_path

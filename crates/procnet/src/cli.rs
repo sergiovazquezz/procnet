@@ -6,7 +6,7 @@ use procnet_core::{
     ipc::{self, DaemonCommand},
 };
 
-const BUF_SIZE: usize = size_of::<u16>() + size_of::<DaemonCommand>();
+const BUF_SIZE: usize = ipc::PREFIX_LEN + size_of::<DaemonCommand>();
 
 #[derive(Subcommand)]
 pub enum Command {
